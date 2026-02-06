@@ -30,6 +30,14 @@ export class CommandRunner {
         return command;
     }
 
+    private shouldUseShell(command: string): boolean {
+        // On Windows, `.cmd` / `.bat` files are not directly executable via CreateProcess,
+        // so we need to spawn them through the shell (cmd.exe).
+        if (os.platform() !== "win32") return false;
+        const lower = command.toLowerCase();
+        return lower.endsWith(".cmd") || lower.endsWith(".bat");
+    }
+
     run(
         jobId: string,
         command: string,
@@ -42,11 +50,11 @@ export class CommandRunner {
         const start = Date.now();
         const resolvedCommand = this.resolveCommand(command);
 
-        // IMPORTANT: shell false is the key for cross-platform stability
+        const useShell = this.shouldUseShell(resolvedCommand);
         const child = spawn(resolvedCommand, args, {
             cwd: options.cwd,
             env: { ...process.env, ...options.env },
-            shell: false,
+            shell: useShell,
             windowsHide: true,
         });
 
