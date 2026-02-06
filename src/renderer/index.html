@@ -1,175 +1,655 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>DevFactory - Command Runner</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevFactory - Project Scaffolding</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --primary: #0ea5e9;
+            --primary-hover: #0284c7;
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --border: rgba(51, 65, 85, 0.5);
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            padding: 30px;
-            background: #0f172a;
-            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
             margin: 0;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #38bdf8;
-            margin-bottom: 20px;
-        }
-
-        .controls {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        button {
-            background: #1e293b;
-            color: #f8fafc;
-            border: 1px solid #334155;
-            padding: 10px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+        /* Glassmorphism background effect */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -10%;
+            left: -10%;
+            width: 40%;
+            height: 40%;
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
+            z-index: -1;
+            filter: blur(60px);
+        }
+
+        header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .system-status {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85rem;
+        }
+
+        .status-item {
             display: flex;
             align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
         }
 
-        button:hover {
-            background: #334155;
-            border-color: #475569;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
         }
 
-        button:active {
-            transform: translateY(1px);
+        .dot-green {
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success);
         }
 
-        button.primary {
-            background: #0284c7;
-            border-color: #0369a1;
+        .dot-red {
+            background-color: var(--danger);
+            box-shadow: 0 0 10px var(--danger);
         }
 
-        button.primary:hover {
-            background: #0369a1;
-        }
-
-        button.danger {
-            background: #991b1b;
-            border-color: #7f1d1d;
-        }
-
-        button.danger:hover {
-            background: #7f1d1d;
-        }
-
-        #terminal {
-            background: #000000;
-            color: #a3e635;
-            padding: 20px;
-            height: 450px;
+        main {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
             overflow-y: auto;
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            border-radius: 8px;
-            border: 1px solid #1e293b;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
-            line-height: 1.5;
-            white-space: pre-wrap;
         }
 
-        .stderr {
+        .wizard-container {
+            width: 100%;
+            max-width: 800px;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+
+        /* Step 1: Frameworks */
+        .framework-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .framework-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 30px;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 15px;
+        }
+
+        .framework-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            background: rgba(30, 41, 59, 0.9);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .framework-card.selected {
+            border-color: var(--primary);
+            background: rgba(14, 165, 233, 0.1);
+            outline: 2px solid var(--primary);
+        }
+
+        .framework-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .framework-name {
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .framework-desc {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        /* Step 2: Details */
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* Step 3: Progress */
+        #log-container {
+            background: #000;
+            border-radius: 12px;
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+            margin-top: 20px;
+        }
+
+        .log-stdout {
+            color: #a3e635;
+        }
+
+        .log-stderr {
             color: #f87171;
         }
 
-        .system {
+        .log-step {
             color: #38bdf8;
-            font-style: italic;
-            opacity: 0.8;
+            font-weight: 700;
+            margin-top: 15px;
+            display: block;
         }
 
-        .prompt {
-            color: #38bdf8;
-            font-weight: bold;
+        .progress-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Buttons */
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        button {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Success screen */
+        .success-card {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .success-icon {
+            font-size: 4rem;
+            color: var(--success);
+            margin-bottom: 20px;
+        }
+
+        .project-path {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            margin: 20px 0;
+            word-break: break-all;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <h1>Command Runner Engine</h1>
-        <div class="controls">
-            <button onclick="run('node', ['-v'])">Run Node Check</button>
-            <button onclick="run('npm', ['-v'])">NPM Check</button>
-            <button onclick="run('php', ['-v'])">PHP Check</button>
-            <button onclick="run('composer', ['-V'])">Composer Check</button>
-            <div style="flex-grow: 1;"></div>
-            <button class="danger" onclick="cancel()">Cancel Signal</button>
-            <button onclick="clearLogs()">Clear Console</button>
+    <header>
+        <div class="logo">DevFactory</div>
+        <div class="system-status" id="dep-status">
+            <!-- Populated by JS -->
         </div>
-        <div id="terminal"></div>
-    </div>
+    </header>
+
+    <main>
+        <div class="wizard-container">
+
+            <!-- Step 1: Framework Choice -->
+            <div id="view-framework" class="view active">
+                <h2>Choose Framework</h2>
+                <div class="framework-grid">
+                    <div class="framework-card" onclick="selectFramework('laravel')">
+                        <div class="framework-icon">🐘</div>
+                        <div class="framework-name">Laravel</div>
+                        <div class="framework-desc">PHP framework for web artisans. Needs Composer & PHP.</div>
+                    </div>
+                    <div class="framework-card" onclick="selectFramework('react')">
+                        <div class="framework-icon">⚛️</div>
+                        <div class="framework-name">React (Vite)</div>
+                        <div class="framework-desc">Modern React with lightning fast Vite build tool.</div>
+                    </div>
+                    <div class="framework-card" onclick="selectFramework('next')">
+                        <div class="framework-icon">▲</div>
+                        <div class="framework-name">Next.js</div>
+                        <div class="framework-desc">The React framework for the web. Full-stack power.</div>
+                    </div>
+                    <div class="framework-card" onclick="selectFramework('angular')">
+                        <div class="framework-icon">🅰️</div>
+                        <div class="framework-name">Angular</div>
+                        <div class="framework-desc">The modern web developer's platform. Official CLI.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Project Details -->
+            <div id="view-details" class="view">
+                <h2 id="details-title">Project Details</h2>
+                <div class="form-group">
+                    <label>Project Name</label>
+                    <input type="text" id="project-name" placeholder="my-awesome-app">
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="project-path" readonly placeholder="Click Browse to select...">
+                        <button class="btn-secondary" onclick="browseFolder()">Browse</button>
+                    </div>
+                </div>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-deps" checked> Install dependencies after creation
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-git" checked> Initialize git repository
+                    </label>
+                </div>
+                <div class="actions">
+                    <button class="btn-secondary" onclick="showView('view-framework')">Back</button>
+                    <button class="btn-primary" onclick="startScaffolding()">Create Project</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Progress -->
+            <div id="view-progress" class="view">
+                <h2>Scaffolding Project...</h2>
+                <div class="progress-indicator">
+                    <div class="spinner"></div>
+                    <span id="current-step">Initialising...</span>
+                </div>
+                <div id="log-container"></div>
+                <div class="actions">
+                    <button class="btn-danger" id="cancel-btn" onclick="cancelProject()">Cancel Process</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Success -->
+            <div id="view-success" class="view">
+                <div class="success-card">
+                    <div class="success-icon">✓</div>
+                    <h2>Project Created Successfully!</h2>
+                    <p>Your new project is ready to go.</p>
+                    <div class="project-path" id="final-path"></div>
+                    <div class="actions" style="justify-content: center; border:none; margin-top:0;">
+                        <button class="btn-secondary" onclick="openFolder()">Open Folder</button>
+                        <button class="btn-primary" onclick="openInCode()">Open in VS Code</button>
+                    </div>
+                    <div style="margin-top: 30px;">
+                        <button class="btn-secondary" onclick="resetWizard()">Create Another Project</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
 
     <script>
-        let currentJobId = null;
-        const terminal = document.getElementById('terminal');
+        // Simple ANSI to HTML converter
+        class AnsiConverter {
+            constructor() {
+                this.colors = {
+                    0: '#f8fafc', // Reset
+                    31: '#f87171', // Red
+                    32: '#4ade80', // Green
+                    33: '#fbbf24', // Yellow
+                    34: '#60a5fa', // Blue
+                    35: '#c084fc', // Magenta
+                    36: '#22d3ee', // Cyan
+                    37: '#e2e8f0', // White
+                    90: '#94a3b8', // Gray
+                };
+            }
+
+            toHtml(text) {
+                // Escape HTML
+                let html = text.replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                // Replace ANSI codes
+                const ansiRegex = /\u001b\[(\d+;?\d*)m/g;
+                let currentAttributes = [];
+
+                html = html.replace(ansiRegex, (match, code) => {
+                    const codes = code.split(';');
+                    let result = '';
+
+                    codes.forEach(c => {
+                        const numericCode = parseInt(c);
+                        if (numericCode === 0) {
+                            while (currentAttributes.length > 0) {
+                                currentAttributes.pop();
+                                result += '</span>';
+                            }
+                        } else if (this.colors[numericCode]) {
+                            result += `<span style="color: ${this.colors[numericCode]}">`;
+                            currentAttributes.push('color');
+                        }
+                    });
+
+                    return result;
+                });
+
+                while (currentAttributes.length > 0) {
+                    currentAttributes.pop();
+                    html += '</span>';
+                }
+
+                return html.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            }
+        }
+
+        const ansiConverter = new AnsiConverter();
+        let selectedFramework = null;
+        let finalProjectPath = '';
+
+        // Initial dependency check
+        async function checkDeps() {
+            const deps = await window.electronAPI.checkDeps();
+            const container = document.getElementById('dep-status');
+            container.innerHTML = '';
+
+            deps.forEach(dep => {
+                const item = document.createElement('div');
+                item.className = 'status-item';
+                item.title = dep.installed ? dep.version : (dep.error || 'Not found');
+                item.innerHTML = `
+                    <div class="status-dot ${dep.installed ? 'dot-green' : 'dot-red'}"></div>
+                    ${dep.tool.toUpperCase()}
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function showView(id) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function selectFramework(fw) {
+            selectedFramework = fw;
+            document.querySelectorAll('.framework-card').forEach(c => c.classList.remove('selected'));
+            // Find and select the card (easier with actual selection state but this works for clicks)
+            document.getElementById('details-title').textContent = `Project Details: ${fw.charAt(0).toUpperCase() + fw.slice(1)}`;
+            showView('view-details');
+        }
+
+        async function browseFolder() {
+            const path = await window.electronAPI.selectDir();
+            if (path) {
+                document.getElementById('project-path').value = path;
+            }
+        }
+
+        function resetWizard() {
+            selectedFramework = null;
+            document.getElementById('project-name').value = '';
+            document.getElementById('project-path').value = '';
+            document.getElementById('log-container').innerHTML = '';
+            showView('view-framework');
+        }
 
         function appendLog(data, type) {
-            const span = document.createElement('span');
-            span.className = type;
-            span.textContent = data;
-            terminal.appendChild(span);
-            terminal.scrollTop = terminal.scrollHeight;
+            const container = document.getElementById('log-container');
+            if (data) {
+                if (type === 'stdout' || type === 'stderr') {
+                    const html = ansiConverter.toHtml(data);
+                    const div = document.createElement('div');
+                    div.style.display = 'inline';
+                    div.innerHTML = html;
+                    container.appendChild(div);
+                } else {
+                    const span = document.createElement('span');
+                    span.className = `log-${type}`;
+                    span.textContent = data;
+                    container.appendChild(span);
+                }
+            }
+            container.scrollTop = container.scrollHeight;
         }
 
-        async function run(command, args) {
-            if (currentJobId) {
-                appendLog(`\n[Wait for current job to finish or cancel it]\n`, 'system');
+        async function startScaffolding() {
+            const name = document.getElementById('project-name').value.trim();
+            const path = document.getElementById('project-path').value.trim();
+
+            if (!name || !path) {
+                alert('Please provide a project name and location.');
                 return;
             }
-            currentJobId = 'job_' + Date.now();
-            appendLog(`\n`, 'stdout');
-            const promptSpan = document.createElement('span');
-            promptSpan.className = 'prompt';
-            promptSpan.textContent = `> ${command} ${args.join(' ')}\n`;
-            terminal.appendChild(promptSpan);
 
-            const response = await window.electronAPI.runCommand(currentJobId, command, args, {});
+            finalProjectPath = `${path}/${name}`;
+
+            showView('view-progress');
+            document.getElementById('log-container').innerHTML = '';
+
+            const payload = {
+                framework: selectedFramework,
+                name,
+                path,
+                options: {
+                    installDeps: document.getElementById('opt-deps').checked,
+                    initGit: document.getElementById('opt-git').checked
+                }
+            };
+
+            const response = await window.electronAPI.createProject(payload);
 
             if (response.success) {
-                appendLog(`\n[Process exited with code ${response.result.code} in ${response.result.durationMs}ms]\n`, 'system');
+                document.getElementById('final-path').textContent = finalProjectPath;
+                showView('view-success');
             } else {
-                appendLog(`\n[Error: ${response.error}]\n`, 'stderr');
-            }
-            currentJobId = null;
-        }
-
-        function cancel() {
-            if (currentJobId) {
-                window.electronAPI.cancelCommand(currentJobId);
-                appendLog(`\n[Cancellation requested]\n`, 'stderr');
+                appendLog(`\nFAILED: ${response.error}\n`, 'stderr');
+                document.getElementById('current-step').textContent = 'Failed';
+                document.getElementById('cancel-btn').textContent = 'Back to Start';
+                document.getElementById('cancel-btn').onclick = resetWizard;
             }
         }
 
-        function clearLogs() {
-            terminal.innerHTML = '<span class="system">Terminal cleared. Ready.</span>\n';
+        function cancelProject() {
+            // Since we don't have a specific jobId for the whole sequence yet, we might need to handle this.
+            // But CommandRunner keeps track of child processes.
+            // For now, let's just alert and reset or attempt to signal.
+            window.electronAPI.cancelCommand('all'); // Need to implement 'all' or track local jobId
+            resetWizard();
         }
 
-        window.electronAPI.onCommandLog((info) => {
-            if (info.jobId === currentJobId) {
-                appendLog(info.data, info.type);
+        function openFolder() {
+            window.electronAPI.openFolder(finalProjectPath);
+        }
+
+        function openInCode() {
+            window.electronAPI.openCode(finalProjectPath);
+        }
+
+        // Listen for progress
+        window.electronAPI.onProjectProgress((info) => {
+            if (info.type === 'step') {
+                document.getElementById('current-step').textContent = info.step;
             }
+            appendLog(info.data, info.type);
         });
 
-        // Initial message
-        appendLog('DevFactory Command Runner Engine Ready.\n', 'system');
+        // Initialize
+        checkDeps();
     </script>
 </body>
 
