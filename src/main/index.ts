@@ -1,10 +1,6 @@
 import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, IpcMainEvent } from "electron";
 import path from "path";
-import { fileURLToPath } from "url";
-import { CommandRunner } from "./core/commandRunner.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { CommandRunner } from "./core/commandRunner";
 
 let mainWindow: BrowserWindow | null = null;
 const runner = new CommandRunner();
@@ -17,7 +13,6 @@ function createWindow() {
             preload: path.join(__dirname, "../preload/preload.js"),
             contextIsolation: true,
             nodeIntegration: false,
-            // Disable sandbox so ES module preload can use `import` syntax
             sandbox: false,
         },
     });
