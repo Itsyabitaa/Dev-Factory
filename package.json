@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "DevFactory CLI tool for project management",
   "main": "dist/main/index.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "build": "node ./node_modules/typescript/bin/tsc",
     "watch": "node ./node_modules/typescript/bin/tsc -w",
