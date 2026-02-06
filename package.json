@@ -1,0 +1,25 @@
+{
+  "name": "devfactory",
+  "version": "1.0.0",
+  "description": "DevFactory CLI tool for project management",
+  "main": "dist/main/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "node ./node_modules/typescript/bin/tsc",
+    "watch": "node ./node_modules/typescript/bin/tsc -w",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && (npm run watch & electron .)"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^34.1.0",
+    "electron-builder": "^25.1.8",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "inquirer": "^9.2.12"
+  }
+}
