@@ -1,9 +1,15 @@
-import { spawn } from "child_process";
-import os from "os";
-export class CommandRunner {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CommandRunner = void 0;
+const child_process_1 = require("child_process");
+const os_1 = __importDefault(require("os"));
+class CommandRunner {
     jobs = new Map();
     resolveCommand(command) {
-        if (os.platform() === "win32") {
+        if (os_1.default.platform() === "win32") {
             if (command === "npm")
                 return "npm.cmd";
             if (command === "npx")
@@ -13,16 +19,24 @@ export class CommandRunner {
         }
         return command;
     }
+    shouldUseShell(command) {
+        // On Windows, `.cmd` / `.bat` files are not directly executable via CreateProcess,
+        // so we need to spawn them through the shell (cmd.exe).
+        if (os_1.default.platform() !== "win32")
+            return false;
+        const lower = command.toLowerCase();
+        return lower.endsWith(".cmd") || lower.endsWith(".bat");
+    }
     run(jobId, command, args, options = {}, handlers = {}) {
         if (this.jobs.has(jobId))
             throw new Error(`Job already exists: ${jobId}`);
         const start = Date.now();
         const resolvedCommand = this.resolveCommand(command);
-        // IMPORTANT: shell false is the key for cross-platform stability
-        const child = spawn(resolvedCommand, args, {
+        const useShell = this.shouldUseShell(resolvedCommand);
+        const child = (0, child_process_1.spawn)(resolvedCommand, args, {
             cwd: options.cwd,
             env: { ...process.env, ...options.env },
-            shell: false,
+            shell: useShell,
             windowsHide: true,
         });
         this.jobs.set(jobId, child);
@@ -55,9 +69,9 @@ export class CommandRunner {
         const child = this.jobs.get(jobId);
         if (!child)
             return;
-        if (os.platform() === "win32") {
+        if (os_1.default.platform() === "win32") {
             // Most reliable way to kill a process tree on Windows
-            spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+            (0, child_process_1.spawn)("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
                 shell: true,
                 windowsHide: true,
             });
@@ -69,3 +83,4 @@ export class CommandRunner {
         this.jobs.delete(jobId);
     }
 }
+exports.CommandRunner = CommandRunner;
