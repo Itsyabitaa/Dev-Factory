@@ -11,8 +11,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     selectDir: () => ipcRenderer.invoke("project:select-dir"),
     checkDeps: () => ipcRenderer.invoke("project:check-deps"),
     createProject: (payload: any) => ipcRenderer.invoke("project:create", payload),
+    buildProject: (projectPath: string) => ipcRenderer.invoke("project:build", projectPath),
     openFolder: (path: string) => ipcRenderer.invoke("project:open-folder", path),
     openCode: (path: string) => ipcRenderer.invoke("project:open-code", path),
     onProjectProgress: (callback: (data: any) => void) =>
         ipcRenderer.on("project:progress", (_event, value) => callback(value)),
+
+    // Sprint 4
+    addDomain: (domain: string, projectId: string, documentRoot?: string) => ipcRenderer.invoke("host:add", { domain, projectId, documentRoot }),
+    removeDomain: (domain: string) => ipcRenderer.invoke("host:remove", domain),
+    isDomainMapped: (domain: string) => ipcRenderer.invoke("host:is-mapped", domain),
 });
