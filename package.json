@@ -20,6 +20,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "inquirer": "^9.2.12"
+    "inquirer": "^9.2.12",
+    "sudo-prompt": "^9.2.1"
   }
 }
