@@ -7,10 +7,12 @@ const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const commandRunner_1 = require("./core/commandRunner");
 const projectService_1 = require("./core/projectService");
+const hostService_1 = require("./core/hostService");
 const child_process_1 = require("child_process");
 let mainWindow = null;
 const runner = new commandRunner_1.CommandRunner();
 const projectService = new projectService_1.ProjectService(runner);
+const hostService = new hostService_1.HostService();
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 1000,
@@ -70,6 +72,18 @@ electron_1.ipcMain.handle("project:create", async (_event, payload) => {
         mainWindow?.webContents.send("project:progress", { step, data, type });
     });
 });
+electron_1.ipcMain.handle("project:build", async (_event, projectPath) => {
+    try {
+        const result = await runner.run(`build_${Date.now()}`, "npm", ["run", "build"], { cwd: projectPath }, {
+            onStdout: (data) => mainWindow?.webContents.send("project:progress", { step: "Building for production...", data, type: "stdout" }),
+            onStderr: (data) => mainWindow?.webContents.send("project:progress", { step: "Building for production...", data, type: "stderr" }),
+        });
+        return { success: result.code === 0, code: result.code };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
+});
 electron_1.ipcMain.handle("project:open-folder", async (_event, folderPath) => {
     electron_1.shell.openPath(folderPath);
 });
@@ -80,4 +94,14 @@ electron_1.ipcMain.handle("project:open-code", async (_event, folderPath) => {
         if (err)
             console.error("Failed to open VS Code:", err);
     });
+});
+// Sprint 4 Handlers
+electron_1.ipcMain.handle("host:add", async (_event, { domain, projectId, documentRoot }) => {
+    return await hostService.addDomain(domain, projectId, "127.0.0.1", documentRoot);
+});
+electron_1.ipcMain.handle("host:remove", async (_event, domain) => {
+    return await hostService.removeDomain(domain);
+});
+electron_1.ipcMain.handle("host:is-mapped", async (_event, domain) => {
+    return await hostService.isDomainMapped(domain);
 });
