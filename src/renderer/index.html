@@ -422,6 +422,11 @@
                     <label class="checkbox-item">
                         <input type="checkbox" id="opt-git" checked> Initialize git repository
                     </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-domain" checked onchange="updateDomainPreview()">
+                        Create domain mapping (<span id="domain-preview"
+                            style="color:var(--primary); font-weight:700;"></span>)
+                    </label>
                 </div>
                 <div class="actions">
                     <button class="btn-secondary" onclick="showView('view-framework')">Back</button>
@@ -442,13 +447,18 @@
                 </div>
             </div>
 
-            <!-- Step 4: Success -->
             <div id="view-success" class="view">
                 <div class="success-card">
                     <div class="success-icon">✓</div>
                     <h2>Project Created Successfully!</h2>
                     <p>Your new project is ready to go.</p>
                     <div class="project-path" id="final-path"></div>
+                    <div id="domain-status" style="margin-bottom: 20px; display: none;">
+                        <span style="color: var(--text-dim);">Domain Mapping:</span>
+                        <span id="final-domain" style="color: var(--success); font-weight: 700;"></span>
+                        <span id="v-badge"
+                            style="background: var(--success); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 10px;">VERIFIED</span>
+                    </div>
                     <div class="actions" style="justify-content: center; border:none; margin-top:0;">
                         <button class="btn-secondary" onclick="openFolder()">Open Folder</button>
                         <button class="btn-primary" onclick="openInCode()">Open in VS Code</button>
@@ -521,6 +531,7 @@
         const ansiConverter = new AnsiConverter();
         let selectedFramework = null;
         let finalProjectPath = '';
+        let domainSuffix = '.test';
 
         // Initial dependency check
         async function checkDeps() {
@@ -543,15 +554,27 @@
         function showView(id) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(id).classList.add('active');
+
+            if (id === 'view-details') {
+                updateDomainPreview();
+            }
         }
 
         function selectFramework(fw) {
             selectedFramework = fw;
             document.querySelectorAll('.framework-card').forEach(c => c.classList.remove('selected'));
-            // Find and select the card (easier with actual selection state but this works for clicks)
             document.getElementById('details-title').textContent = `Project Details: ${fw.charAt(0).toUpperCase() + fw.slice(1)}`;
             showView('view-details');
         }
+
+        function updateDomainPreview() {
+            const name = document.getElementById('project-name').value.trim() || 'my-app';
+            const domain = name.toLowerCase().replace(/[^a-z0-9]/g, '-') + domainSuffix;
+            document.getElementById('domain-preview').textContent = domain;
+        }
+
+        // Attach listener to project name input
+        document.getElementById('project-name').addEventListener('input', updateDomainPreview);
 
         async function browseFolder() {
             const path = await window.electronAPI.selectDir();
@@ -565,6 +588,7 @@
             document.getElementById('project-name').value = '';
             document.getElementById('project-path').value = '';
             document.getElementById('log-container').innerHTML = '';
+            document.getElementById('domain-status').style.display = 'none';
             showView('view-framework');
         }
 
@@ -596,7 +620,14 @@
                 return;
             }
 
+            if (!/^[a-zA-Z0-9-]+$/.test(name)) {
+                alert('Project name can only contain letters, numbers, and hyphens.');
+                return;
+            }
+
             finalProjectPath = `${path}/${name}`;
+            const domain = name.toLowerCase().replace(/[^a-z0-9]/g, '-') + domainSuffix;
+            const shouldMapDomain = document.getElementById('opt-domain').checked;
 
             showView('view-progress');
             document.getElementById('log-container').innerHTML = '';
@@ -615,6 +646,34 @@
 
             if (response.success) {
                 document.getElementById('final-path').textContent = finalProjectPath;
+
+                if (shouldMapDomain) {
+                    const isFrontend = selectedFramework === 'react' || selectedFramework === 'next' || selectedFramework === 'angular';
+                    if (isFrontend) {
+                        appendLog(`\nBuilding for production (so ${domain} works right away)...\n`, 'log-step');
+                        document.getElementById('current-step').textContent = 'Building for production...';
+                        const buildRes = await window.electronAPI.buildProject(finalProjectPath);
+                        if (buildRes.success) {
+                            appendLog(`Build completed.\n`, 'stdout');
+                        } else {
+                            appendLog(`Build failed (you can run "npm run build" in the project later).\n`, 'stderr');
+                        }
+                    }
+                    appendLog(`\nMapping domain ${domain} (Admin permission required)...\n`, 'log-step');
+                    document.getElementById('current-step').textContent = 'Mapping domain...';
+                    const documentRoot = selectedFramework === 'laravel'
+                        ? `${finalProjectPath}/public`
+                        : `${finalProjectPath}/dist`;
+                    const domainRes = await window.electronAPI.addDomain(domain, name, documentRoot);
+                    if (domainRes.success) {
+                        document.getElementById('domain-status').style.display = 'block';
+                        document.getElementById('final-domain').textContent = domain;
+                        appendLog(`Domain ${domain} mapped successfully!\n`, 'stdout');
+                    } else {
+                        appendLog(`Failed to map domain: ${domainRes.error}\n`, 'stderr');
+                    }
+                }
+
                 showView('view-success');
             } else {
                 appendLog(`\nFAILED: ${response.error}\n`, 'stderr');
@@ -625,10 +684,7 @@
         }
 
         function cancelProject() {
-            // Since we don't have a specific jobId for the whole sequence yet, we might need to handle this.
-            // But CommandRunner keeps track of child processes.
-            // For now, let's just alert and reset or attempt to signal.
-            window.electronAPI.cancelCommand('all'); // Need to implement 'all' or track local jobId
+            window.electronAPI.cancelCommand('all');
             resetWizard();
         }
 
@@ -640,7 +696,6 @@
             window.electronAPI.openCode(finalProjectPath);
         }
 
-        // Listen for progress
         window.electronAPI.onProjectProgress((info) => {
             if (info.type === 'step') {
                 document.getElementById('current-step').textContent = info.step;
@@ -648,7 +703,6 @@
             appendLog(info.data, info.type);
         });
 
-        // Initialize
         checkDeps();
     </script>
 </body>
