@@ -9,7 +9,12 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
     selectDir: () => electron_1.ipcRenderer.invoke("project:select-dir"),
     checkDeps: () => electron_1.ipcRenderer.invoke("project:check-deps"),
     createProject: (payload) => electron_1.ipcRenderer.invoke("project:create", payload),
+    buildProject: (projectPath) => electron_1.ipcRenderer.invoke("project:build", projectPath),
     openFolder: (path) => electron_1.ipcRenderer.invoke("project:open-folder", path),
     openCode: (path) => electron_1.ipcRenderer.invoke("project:open-code", path),
     onProjectProgress: (callback) => electron_1.ipcRenderer.on("project:progress", (_event, value) => callback(value)),
+    // Sprint 4
+    addDomain: (domain, projectId, documentRoot) => electron_1.ipcRenderer.invoke("host:add", { domain, projectId, documentRoot }),
+    removeDomain: (domain) => electron_1.ipcRenderer.invoke("host:remove", domain),
+    isDomainMapped: (domain) => electron_1.ipcRenderer.invoke("host:is-mapped", domain),
 });
