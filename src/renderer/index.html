@@ -652,7 +652,7 @@
                     if (isFrontend) {
                         appendLog(`\nBuilding for production (so ${domain} works right away)...\n`, 'log-step');
                         document.getElementById('current-step').textContent = 'Building for production...';
-                        const buildRes = await window.electronAPI.buildProject(finalProjectPath);
+                        const buildRes = await window.electronAPI.buildProject(finalProjectPath, selectedFramework);
                         if (buildRes.success) {
                             appendLog(`Build completed.\n`, 'stdout');
                         } else {
@@ -661,9 +661,7 @@
                     }
                     appendLog(`\nMapping domain ${domain} (Admin permission required)...\n`, 'log-step');
                     document.getElementById('current-step').textContent = 'Mapping domain...';
-                    const documentRoot = selectedFramework === 'laravel'
-                        ? `${finalProjectPath}/public`
-                        : `${finalProjectPath}/dist`;
+                    const documentRoot = await window.electronAPI.getDocumentRoot(finalProjectPath, selectedFramework, name);
                     const domainRes = await window.electronAPI.addDomain(domain, name, documentRoot);
                     if (domainRes.success) {
                         document.getElementById('domain-status').style.display = 'block';
