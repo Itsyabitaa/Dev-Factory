@@ -40,15 +40,56 @@ class CommandRunner {
             windowsHide: true,
         });
         this.jobs.set(jobId, child);
-        child.stdout.setEncoding("utf8");
-        child.stderr.setEncoding("utf8");
-        child.stdout.on("data", (chunk) => handlers.onStdout?.(chunk));
-        child.stderr.on("data", (chunk) => handlers.onStderr?.(chunk));
+        if (child.stdout)
+            child.stdout.setEncoding("utf8");
+        if (child.stderr)
+            child.stderr.setEncoding("utf8");
+        child.stdout?.on("data", (chunk) => handlers.onStdout?.(chunk));
+        child.stderr?.on("data", (chunk) => handlers.onStderr?.(chunk));
         let timeout;
         if (options.timeoutMs) {
             timeout = setTimeout(() => {
                 this.cancel(jobId);
             }, options.timeoutMs);
+        }
+        return new Promise((resolve, reject) => {
+            child.on("error", (err) => {
+                this.jobs.delete(jobId);
+                if (timeout)
+                    clearTimeout(timeout);
+                reject(err);
+            });
+            child.on("close", (code, signal) => {
+                this.jobs.delete(jobId);
+                if (timeout)
+                    clearTimeout(timeout);
+                resolve({ code, signal, durationMs: Date.now() - start });
+            });
+        });
+    }
+    /** Run a full shell command string (e.g. for custom run profiles). */
+    runShell(jobId, command, options = {}, handlers = {}) {
+        if (this.jobs.has(jobId))
+            throw new Error(`Job already exists: ${jobId}`);
+        const start = Date.now();
+        const shell = os_1.default.platform() === "win32" ? "cmd.exe" : "/bin/sh";
+        const args = os_1.default.platform() === "win32" ? ["/c", command] : ["-c", command];
+        const child = (0, child_process_1.spawn)(shell, args, {
+            cwd: options.cwd,
+            env: { ...process.env, ...options.env },
+            shell: false,
+            windowsHide: true,
+        });
+        this.jobs.set(jobId, child);
+        if (child.stdout)
+            child.stdout.setEncoding("utf8");
+        if (child.stderr)
+            child.stderr.setEncoding("utf8");
+        child.stdout?.on("data", (chunk) => handlers.onStdout?.(chunk));
+        child.stderr?.on("data", (chunk) => handlers.onStderr?.(chunk));
+        let timeout;
+        if (options.timeoutMs) {
+            timeout = setTimeout(() => this.cancel(jobId), options.timeoutMs);
         }
         return new Promise((resolve, reject) => {
             child.on("error", (err) => {
@@ -88,6 +129,14 @@ class CommandRunner {
     }
     hasJob(jobId) {
         return this.jobs.has(jobId);
+    }
+    getAllJobIds() {
+        return Array.from(this.jobs.keys());
+    }
+    cancelAll() {
+        for (const jobId of this.getAllJobIds()) {
+            this.cancel(jobId);
+        }
     }
 }
 exports.CommandRunner = CommandRunner;

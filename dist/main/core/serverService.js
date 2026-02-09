@@ -6,24 +6,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ServerService = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
-const DEV_COMMANDS = {
-    laravel: {
-        cmd: "php",
-        args: (port) => ["artisan", "serve", "--host", "127.0.0.1", "--port", String(port)],
-    },
-    react: {
-        cmd: "npm",
-        args: (port) => ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(port)],
-    },
-    next: {
-        cmd: "npm",
-        args: (port) => ["run", "dev", "--", "-p", String(port)],
-    },
-    angular: {
-        cmd: "npx",
-        args: (port) => ["ng", "serve", "--host", "127.0.0.1", "--port", String(port)],
-    },
-};
+const packageManager_1 = require("./packageManager");
+function getDefaultStartCommand(framework, fullPath, port) {
+    const nodeManager = (0, packageManager_1.detectNodePackageManager)(fullPath);
+    switch (framework) {
+        case "laravel":
+            return { cmd: "php", args: ["artisan", "serve", "--host", "127.0.0.1", "--port", String(port)] };
+        case "react":
+            return { cmd: nodeManager === "pnpm" ? "pnpm" : nodeManager === "yarn" ? "yarn" : "npm", args: (0, packageManager_1.getNodeRunDevArgs)(nodeManager, port) };
+        case "next":
+            return {
+                cmd: nodeManager === "pnpm" ? "pnpm" : nodeManager === "yarn" ? "yarn" : "npm",
+                args: nodeManager === "pnpm" ? ["run", "dev", "--", "-p", String(port)] : nodeManager === "yarn" ? ["run", "dev", "-p", String(port)] : ["run", "dev", "--", "-p", String(port)],
+            };
+        case "angular":
+            return { cmd: "npx", args: ["ng", "serve", "--host", "127.0.0.1", "--port", String(port)] };
+    }
+}
 class ServerService {
     runner;
     projectService;
@@ -103,7 +102,7 @@ class ServerService {
         }
         let port;
         try {
-            port = await this.portService.getPortForProject(projectId);
+            port = await this.portService.getPortForProject(projectId, project.runProfile?.port);
         }
         catch (e) {
             return { success: false, error: e.message };
@@ -115,12 +114,22 @@ class ServerService {
             status: "Starting",
         });
         this.sendStatus(projectId, "Starting");
-        const spec = DEV_COMMANDS[project.framework];
-        const args = spec.args(port);
-        const runPromise = this.runner.run(jobId, spec.cmd, args, { cwd: projectId }, {
-            onStdout: (data) => this.sendLog(projectId, data, "stdout"),
-            onStderr: (data) => this.sendLog(projectId, data, "stderr"),
-        });
+        const env = project.runProfile?.env ? { ...process.env, ...project.runProfile.env } : undefined;
+        let runPromise;
+        if (project.runProfile?.startCommand) {
+            const cmdStr = project.runProfile.startCommand.replace(/\{\{port\}\}/g, String(port));
+            runPromise = this.runner.runShell(jobId, cmdStr, { cwd: projectId, env }, {
+                onStdout: (data) => this.sendLog(projectId, data, "stdout"),
+                onStderr: (data) => this.sendLog(projectId, data, "stderr"),
+            });
+        }
+        else {
+            const spec = getDefaultStartCommand(project.framework, projectId, port);
+            runPromise = this.runner.run(jobId, spec.cmd, spec.args, { cwd: projectId, env }, {
+                onStdout: (data) => this.sendLog(projectId, data, "stdout"),
+                onStderr: (data) => this.sendLog(projectId, data, "stderr"),
+            });
+        }
         const entry = this.registry.get(projectId);
         if (entry) {
             const pid = this.runner.getPid(jobId);
