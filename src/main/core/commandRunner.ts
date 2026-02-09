@@ -1,4 +1,4 @@
-import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import os from "os";
 
 export type RunOptions = {
@@ -19,7 +19,7 @@ type Handlers = {
 };
 
 export class CommandRunner {
-    private jobs = new Map<string, ChildProcessWithoutNullStreams>();
+    private jobs = new Map<string, ChildProcess>();
 
     private resolveCommand(command: string): string {
         if (os.platform() === "win32") {
@@ -60,11 +60,10 @@ export class CommandRunner {
 
         this.jobs.set(jobId, child);
 
-        child.stdout.setEncoding("utf8");
-        child.stderr.setEncoding("utf8");
-
-        child.stdout.on("data", (chunk: string) => handlers.onStdout?.(chunk));
-        child.stderr.on("data", (chunk: string) => handlers.onStderr?.(chunk));
+        if (child.stdout) child.stdout.setEncoding("utf8");
+        if (child.stderr) child.stderr.setEncoding("utf8");
+        child.stdout?.on("data", (chunk: string) => handlers.onStdout?.(chunk));
+        child.stderr?.on("data", (chunk: string) => handlers.onStderr?.(chunk));
 
         let timeout: NodeJS.Timeout | undefined;
         if (options.timeoutMs) {
@@ -80,6 +79,46 @@ export class CommandRunner {
                 reject(err);
             });
 
+            child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+                this.jobs.delete(jobId);
+                if (timeout) clearTimeout(timeout);
+                resolve({ code, signal, durationMs: Date.now() - start });
+            });
+        });
+    }
+
+    /** Run a full shell command string (e.g. for custom run profiles). */
+    runShell(
+        jobId: string,
+        command: string,
+        options: RunOptions = {},
+        handlers: Handlers = {}
+    ): Promise<RunResult> {
+        if (this.jobs.has(jobId)) throw new Error(`Job already exists: ${jobId}`);
+        const start = Date.now();
+        const shell = os.platform() === "win32" ? "cmd.exe" : "/bin/sh";
+        const args = os.platform() === "win32" ? ["/c", command] : ["-c", command];
+        const child = spawn(shell, args, {
+            cwd: options.cwd,
+            env: { ...process.env, ...options.env },
+            shell: false,
+            windowsHide: true,
+        });
+        this.jobs.set(jobId, child);
+        if (child.stdout) child.stdout.setEncoding("utf8");
+        if (child.stderr) child.stderr.setEncoding("utf8");
+        child.stdout?.on("data", (chunk: string) => handlers.onStdout?.(chunk));
+        child.stderr?.on("data", (chunk: string) => handlers.onStderr?.(chunk));
+        let timeout: NodeJS.Timeout | undefined;
+        if (options.timeoutMs) {
+            timeout = setTimeout(() => this.cancel(jobId), options.timeoutMs);
+        }
+        return new Promise((resolve, reject) => {
+            child.on("error", (err: Error) => {
+                this.jobs.delete(jobId);
+                if (timeout) clearTimeout(timeout);
+                reject(err);
+            });
             child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
                 this.jobs.delete(jobId);
                 if (timeout) clearTimeout(timeout);
@@ -113,5 +152,15 @@ export class CommandRunner {
 
     hasJob(jobId: string): boolean {
         return this.jobs.has(jobId);
+    }
+
+    getAllJobIds(): string[] {
+        return Array.from(this.jobs.keys());
+    }
+
+    cancelAll() {
+        for (const jobId of this.getAllJobIds()) {
+            this.cancel(jobId);
+        }
     }
 }

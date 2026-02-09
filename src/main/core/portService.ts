@@ -50,22 +50,31 @@ export class PortService {
         });
     }
 
-    /** Get or allocate port for a project (by fullPath). Persists in manifest. */
-    async getPortForProject(fullPath: string): Promise<number> {
+    /** Get or allocate port for a project (by fullPath). Persists in manifest. Optional preferredPort (e.g. from run profile) used if free. */
+    async getPortForProject(fullPath: string, preferredPort?: number): Promise<number> {
         const projects = this.readProjects();
         const project = projects.find((p) => p.fullPath === fullPath);
-        if (project?.port != null) {
+        if (project?.port != null && preferredPort == null) {
             const free = await this.isPortFree(project.port);
             if (free) return project.port;
+        }
+        if (preferredPort != null && (await this.isPortFree(preferredPort))) {
+            const updated = projects.map((p) => (p.fullPath === fullPath ? { ...p, port: preferredPort } : p));
+            const idx = updated.findIndex((p) => p.fullPath === fullPath);
+            if (idx >= 0) {
+                updated[idx] = { ...updated[idx], port: preferredPort };
+            } else if (project) {
+                updated.push({ ...project, port: preferredPort });
+            }
+            this.writeProjects(updated);
+            return preferredPort;
         }
 
         const usedPorts = new Set(projects.map((p) => p.port).filter((p): p is number => p != null));
         for (let port = PORT_MIN; port <= PORT_MAX; port++) {
             if (usedPorts.has(port)) continue;
             if (await this.isPortFree(port)) {
-                const updated = projects.map((p) =>
-                    p.fullPath === fullPath ? { ...p, port } : p
-                );
+                const updated = projects.map((p) => (p.fullPath === fullPath ? { ...p, port } : p));
                 const idx = updated.findIndex((p) => p.fullPath === fullPath);
                 if (idx >= 0) {
                     updated[idx] = { ...updated[idx], port };

@@ -2,8 +2,16 @@ import fs from "fs";
 import path from "path";
 import { app } from "electron";
 import { CommandRunner, RunResult } from "./commandRunner";
+import { detectFramework as detectFrameworkFromPath } from "./frameworkDetector";
+import { getPreset } from "./presets";
 
 export type Framework = "laravel" | "react" | "next" | "angular";
+
+export interface RunProfile {
+    port?: number;
+    startCommand?: string;
+    env?: Record<string, string>;
+}
 
 export interface ProjectOptions {
     installDeps: boolean;
@@ -15,6 +23,7 @@ export interface ProjectPayload {
     name: string;
     path: string;
     options: ProjectOptions;
+    presetId?: string;
 }
 
 export interface DependencyStatus {
@@ -91,11 +100,13 @@ export class ProjectService {
                     cwd: projectPath,
                 });
                 break;
-            case "react":
+            case "react": {
+                const preset = payload.presetId ? getPreset(payload.presetId) : undefined;
+                const template = preset?.scaffoldExtra?.[0] ?? "react";
                 steps.push({
                     name: "Scaffolding Vite/React project...",
                     cmd: "npm",
-                    args: ["create", "vite@latest", name, "--", "--template", "react"],
+                    args: ["create", "vite@latest", name, "--", "--template", template],
                     cwd: projectPath,
                 });
                 if (options.installDeps) {
@@ -106,12 +117,15 @@ export class ProjectService {
                         cwd: path.join(projectPath, name),
                     });
                 }
+                const reactCwd = path.join(projectPath, name);
+                (preset?.postSteps || []).forEach((s) => steps.push({ name: `Running: ${s.cmd} ${s.args.join(" ")}`, cmd: s.cmd, args: s.args, cwd: reactCwd }));
                 break;
+            }
             case "next":
                 steps.push({
                     name: "Scaffolding Next.js project...",
                     cmd: "npx",
-                    args: ["create-next-app@latest", name, "--yes"],
+                    args: ["create-next-app@latest", name, "--yes", ...(payload.presetId ? getPreset(payload.presetId)?.scaffoldExtra || [] : [])],
                     cwd: projectPath,
                 });
                 if (options.installDeps) {
@@ -123,11 +137,13 @@ export class ProjectService {
                     });
                 }
                 break;
-            case "angular":
+            case "angular": {
+                const preset = payload.presetId ? getPreset(payload.presetId) : undefined;
+                const ngArgs = ["-p", "@angular/cli", "ng", "new", name, "--defaults", ...(preset?.scaffoldExtra || [])];
                 steps.push({
                     name: "Scaffolding Angular project...",
                     cmd: "npx",
-                    args: ["-p", "@angular/cli", "ng", "new", name, "--defaults"],
+                    args: ngArgs,
                     cwd: projectPath,
                 });
                 if (options.installDeps) {
@@ -139,6 +155,7 @@ export class ProjectService {
                     });
                 }
                 break;
+            }
         }
 
         if (options.initGit) {
@@ -169,12 +186,82 @@ export class ProjectService {
         return { success: true };
     }
 
-    getProjects(): Array<{ name: string; framework: Framework; path: string; fullPath: string; createdAt: string; port?: number }> {
+    getProjects(): Array<{ name: string; framework: Framework; path: string; fullPath: string; createdAt: string; port?: number; runProfile?: RunProfile; packageManager?: string; lastOpenedAt?: string; imported?: boolean }> {
         if (!fs.existsSync(this.manifestPath)) return [];
         try {
             return JSON.parse(fs.readFileSync(this.manifestPath, "utf8"));
         } catch {
             return [];
+        }
+    }
+
+    getProject(fullPath: string): { name: string; framework: Framework; path: string; fullPath: string; createdAt: string; port?: number; runProfile?: RunProfile; packageManager?: string; lastOpenedAt?: string } | null {
+        const projects = this.getProjects();
+        const p = projects.find((x) => x.fullPath === fullPath);
+        return p ?? null;
+    }
+
+    importProject(fullPath: string): { success: boolean; error?: string; framework?: Framework } {
+        const normalized = path.normalize(fullPath);
+        const name = path.basename(normalized);
+        const parentPath = path.dirname(normalized);
+        const framework = detectFrameworkFromPath(normalized);
+        if (!framework) {
+            return { success: false, error: "Could not detect framework (Laravel, React, Next, or Angular)." };
+        }
+        let projects: any[] = [];
+        if (fs.existsSync(this.manifestPath)) {
+            try {
+                projects = JSON.parse(fs.readFileSync(this.manifestPath, "utf8"));
+            } catch (e) {
+                projects = [];
+            }
+        }
+        if (projects.some((p) => p.fullPath === normalized)) {
+            return { success: false, error: "Project already in list." };
+        }
+        projects.push({
+            name,
+            framework,
+            path: parentPath,
+            fullPath: normalized,
+            createdAt: new Date().toISOString(),
+            imported: true,
+        });
+        if (!fs.existsSync(path.dirname(this.manifestPath))) {
+            fs.mkdirSync(path.dirname(this.manifestPath), { recursive: true });
+        }
+        fs.writeFileSync(this.manifestPath, JSON.stringify(projects, null, 2));
+        return { success: true, framework };
+    }
+
+    updateProject(fullPath: string, updates: Partial<{ runProfile: RunProfile; packageManager: string; lastOpenedAt: string }>): boolean {
+        if (!fs.existsSync(this.manifestPath)) return false;
+        try {
+            const projects = JSON.parse(fs.readFileSync(this.manifestPath, "utf8"));
+            const idx = projects.findIndex((p: any) => p.fullPath === fullPath);
+            if (idx < 0) return false;
+            if (updates.runProfile !== undefined) projects[idx].runProfile = updates.runProfile;
+            if (updates.packageManager !== undefined) projects[idx].packageManager = updates.packageManager;
+            if (updates.lastOpenedAt !== undefined) projects[idx].lastOpenedAt = updates.lastOpenedAt;
+            fs.writeFileSync(this.manifestPath, JSON.stringify(projects, null, 2));
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    deleteProject(fullPath: string): boolean {
+        if (!fs.existsSync(this.manifestPath)) return false;
+        try {
+            let projects = JSON.parse(fs.readFileSync(this.manifestPath, "utf8"));
+            const before = projects.length;
+            projects = projects.filter((p: { fullPath: string }) => p.fullPath !== fullPath);
+            if (projects.length === before) return false;
+            fs.writeFileSync(this.manifestPath, JSON.stringify(projects, null, 2));
+            return true;
+        } catch {
+            return false;
         }
     }
 

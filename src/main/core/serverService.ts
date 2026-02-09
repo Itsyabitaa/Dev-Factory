@@ -1,9 +1,11 @@
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { CommandRunner } from "./commandRunner";
 import { ProjectService } from "./projectService";
 import { PortService } from "./portService";
 import { HostService } from "./hostService";
+import { detectNodePackageManager, getNodeInstallCommand, getNodeRunDevArgs } from "./packageManager";
 import type { Framework } from "./projectService";
 
 export type ServerStatus = "Stopped" | "Starting" | "Running" | "Error";
@@ -16,27 +18,22 @@ interface RunningEntry {
     status: ServerStatus;
 }
 
-const DEV_COMMANDS: Record<
-    Framework,
-    { cmd: string; args: (port: number) => string[] }
-> = {
-    laravel: {
-        cmd: "php",
-        args: (port) => ["artisan", "serve", "--host", "127.0.0.1", "--port", String(port)],
-    },
-    react: {
-        cmd: "npm",
-        args: (port) => ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(port)],
-    },
-    next: {
-        cmd: "npm",
-        args: (port) => ["run", "dev", "--", "-p", String(port)],
-    },
-    angular: {
-        cmd: "npx",
-        args: (port) => ["ng", "serve", "--host", "127.0.0.1", "--port", String(port)],
-    },
-};
+function getDefaultStartCommand(framework: Framework, fullPath: string, port: number): { cmd: string; args: string[]; useShell?: boolean } {
+    const nodeManager = detectNodePackageManager(fullPath);
+    switch (framework) {
+        case "laravel":
+            return { cmd: "php", args: ["artisan", "serve", "--host", "127.0.0.1", "--port", String(port)] };
+        case "react":
+            return { cmd: nodeManager === "pnpm" ? "pnpm" : nodeManager === "yarn" ? "yarn" : "npm", args: getNodeRunDevArgs(nodeManager, port) };
+        case "next":
+            return {
+                cmd: nodeManager === "pnpm" ? "pnpm" : nodeManager === "yarn" ? "yarn" : "npm",
+                args: nodeManager === "pnpm" ? ["run", "dev", "--", "-p", String(port)] : nodeManager === "yarn" ? ["run", "dev", "-p", String(port)] : ["run", "dev", "--", "-p", String(port)],
+            };
+        case "angular":
+            return { cmd: "npx", args: ["ng", "serve", "--host", "127.0.0.1", "--port", String(port)] };
+    }
+}
 
 export interface ServerServiceOptions {
     sendStatus: (projectId: string, status: ServerStatus) => void;
@@ -133,7 +130,7 @@ export class ServerService {
 
         let port: number;
         try {
-            port = await this.portService.getPortForProject(projectId);
+            port = await this.portService.getPortForProject(projectId, project.runProfile?.port);
         } catch (e: any) {
             return { success: false, error: e.message };
         }
@@ -146,12 +143,22 @@ export class ServerService {
         });
         this.sendStatus(projectId, "Starting");
 
-        const spec = DEV_COMMANDS[project.framework];
-        const args = spec.args(port);
-        const runPromise = this.runner.run(jobId, spec.cmd, args, { cwd: projectId }, {
-            onStdout: (data) => this.sendLog(projectId, data, "stdout"),
-            onStderr: (data) => this.sendLog(projectId, data, "stderr"),
-        });
+        const env = project.runProfile?.env ? { ...process.env, ...project.runProfile.env } : undefined;
+        let runPromise: Promise<any>;
+
+        if (project.runProfile?.startCommand) {
+            const cmdStr = project.runProfile.startCommand.replace(/\{\{port\}\}/g, String(port));
+            runPromise = this.runner.runShell(jobId, cmdStr, { cwd: projectId, env }, {
+                onStdout: (data) => this.sendLog(projectId, data, "stdout"),
+                onStderr: (data) => this.sendLog(projectId, data, "stderr"),
+            });
+        } else {
+            const spec = getDefaultStartCommand(project.framework, projectId, port);
+            runPromise = this.runner.run(jobId, spec.cmd, spec.args, { cwd: projectId, env }, {
+                onStdout: (data) => this.sendLog(projectId, data, "stdout"),
+                onStderr: (data) => this.sendLog(projectId, data, "stderr"),
+            });
+        }
 
         const entry = this.registry.get(projectId);
         if (entry) {
