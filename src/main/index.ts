@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, IpcMainEvent, shell, dialog } from "electron";
 import path from "path";
+import fs from "fs";
 import { CommandRunner } from "./core/commandRunner";
 import { ProjectService, ProjectPayload } from "./core/projectService";
 import { HostService } from "./core/hostService";
@@ -75,8 +76,31 @@ ipcMain.handle("project:create", async (_event: IpcMainInvokeEvent, payload: Pro
     });
 });
 
-ipcMain.handle("project:build", async (_event: IpcMainInvokeEvent, projectPath: string) => {
+/** Ensure Next.js config has output: 'export' so build produces ./out for Apache. */
+function ensureNextStaticExport(projectPath: string): void {
+    const names = ["next.config.mjs", "next.config.js", "next.config.ts"];
+    for (const name of names) {
+        const filePath = path.join(projectPath, name);
+        if (!fs.existsSync(filePath)) continue;
+        let content = fs.readFileSync(filePath, "utf8");
+        if (/output\s*:\s*['"]export['"]/.test(content)) return;
+        // Match: const nextConfig = { | const nextConfig: NextConfig = { | module.exports = { | export default {
+        const replacement = content.replace(
+            /(const nextConfig\s*(?::\s*\w+\s*)?=\s*\{|module\.exports\s*=\s*\{|export default\s*\{)/,
+            "$1\n  output: 'export',"
+        );
+        if (replacement !== content) {
+            fs.writeFileSync(filePath, replacement);
+        }
+        return;
+    }
+}
+
+ipcMain.handle("project:build", async (_event: IpcMainInvokeEvent, payload: { projectPath: string; framework?: string }) => {
+    const projectPath = typeof payload === "string" ? payload : payload.projectPath;
+    const framework = typeof payload === "string" ? undefined : payload.framework;
     try {
+        if (framework === "next") ensureNextStaticExport(projectPath);
         const result = await runner.run(
             `build_${Date.now()}`,
             "npm",
@@ -116,4 +140,17 @@ ipcMain.handle("host:remove", async (_event, domain: string) => {
 
 ipcMain.handle("host:is-mapped", async (_event, domain: string) => {
     return await hostService.isDomainMapped(domain);
+});
+
+/** Resolve document root for static hosting; e.g. Angular may use dist/name or dist/name/browser. */
+ipcMain.handle("project:document-root", async (_event, payload: { projectPath: string; framework: string; name: string }) => {
+    const { projectPath, framework, name } = payload;
+    if (framework === "laravel") return path.join(projectPath, "public");
+    if (framework === "next") return path.join(projectPath, "out");
+    if (framework === "angular") {
+        const withBrowser = path.join(projectPath, "dist", name, "browser");
+        const withoutBrowser = path.join(projectPath, "dist", name);
+        return fs.existsSync(withBrowser) ? withBrowser : withoutBrowser;
+    }
+    return path.join(projectPath, "dist");
 });
