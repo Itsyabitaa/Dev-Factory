@@ -360,14 +360,107 @@
             margin: 20px 0;
             word-break: break-all;
         }
+
+        /* Sprint 5 — Dashboard */
+        .nav-links {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .nav-links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary);
+        }
+        .nav-links a.active {
+            background: rgba(14, 165, 233, 0.15);
+        }
+        .project-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .project-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        .project-row .name { font-weight: 600; flex: 0 0 160px; }
+        .project-row .framework { color: var(--text-dim); flex: 0 0 100px; font-size: 0.9rem; }
+        .project-row .url { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .project-row .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-stopped { background: rgba(148, 163, 184, 0.2); color: var(--text-dim); }
+        .status-running { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .status-starting { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .status-error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .logs-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 280px;
+            background: #0c1222;
+            border-top: 1px solid var(--border);
+            display: none;
+            flex-direction: column;
+            z-index: 100;
+        }
+        .logs-panel.open { display: flex; }
+        .logs-panel-header {
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logs-panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .dep-error-row {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
     </style>
 </head>
 
 <body>
     <header>
         <div class="logo">DevFactory</div>
-        <div class="system-status" id="dep-status">
-            <!-- Populated by JS -->
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <nav class="nav-links">
+                <a href="#" id="nav-create" class="active" onclick="showView('view-framework'); document.querySelectorAll('.nav-links a').forEach(a=>a.classList.remove('active')); document.getElementById('nav-create').classList.add('active'); return false;">Create Project</a>
+                <a href="#" id="nav-projects" onclick="showView('view-dashboard'); loadDashboard(); document.querySelectorAll('.nav-links a').forEach(a=>a.classList.remove('active')); document.getElementById('nav-projects').classList.add('active'); return false;">Projects</a>
+            </nav>
+            <div class="system-status" id="dep-status"></div>
         </div>
     </header>
 
@@ -469,8 +562,25 @@
                 </div>
             </div>
 
+            <!-- Sprint 5: Project Dashboard -->
+            <div id="view-dashboard" class="view">
+                <h2>Projects</h2>
+                <p style="color: var(--text-dim); margin-bottom: 20px;">Start, stop, and open your dev servers.</p>
+                <ul id="project-list" class="project-list"></ul>
+                <p id="dashboard-empty" style="color: var(--text-dim); display: none;">No projects yet. Create one from Create Project.</p>
+            </div>
+
         </div>
     </main>
+
+    <!-- Sprint 5: Live logs panel -->
+    <div id="logs-panel" class="logs-panel">
+        <div class="logs-panel-header">
+            <span id="logs-panel-title">Server log</span>
+            <button class="btn-secondary" onclick="closeLogsPanel()">Close</button>
+        </div>
+        <div id="logs-panel-content" class="logs-panel-content"></div>
+    </div>
 
     <script>
         // Simple ANSI to HTML converter
@@ -590,6 +700,9 @@
             document.getElementById('log-container').innerHTML = '';
             document.getElementById('domain-status').style.display = 'none';
             showView('view-framework');
+            document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
+            const navCreate = document.getElementById('nav-create');
+            if (navCreate) navCreate.classList.add('active');
         }
 
         function appendLog(data, type) {
@@ -699,6 +812,152 @@
                 document.getElementById('current-step').textContent = info.step;
             }
             appendLog(info.data, info.type);
+        });
+
+        // Sprint 5 — Dashboard
+        const projectStatusMap = {};
+        let logsPanelProjectId = null;
+
+        async function loadDashboard() {
+            const list = document.getElementById('project-list');
+            const empty = document.getElementById('dashboard-empty');
+            const projects = await window.electronAPI.getProjectList();
+            list.innerHTML = '';
+            if (!projects || projects.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            for (const p of projects) {
+                const status = projectStatusMap[p.fullPath] ?? (await window.electronAPI.serverStatus(p.fullPath));
+                projectStatusMap[p.fullPath] = status;
+                const url = await window.electronAPI.serverUrl(p.fullPath);
+                const row = document.createElement('li');
+                row.className = 'project-row';
+                row.dataset.projectId = p.fullPath;
+                const fwLabel = { laravel: 'Laravel', react: 'React', next: 'Next.js', angular: 'Angular' }[p.framework] || p.framework;
+                row.innerHTML = `
+                    <span class="name">${escapeHtml(p.name)}</span>
+                    <span class="framework">${escapeHtml(fwLabel)}</span>
+                    <span class="status-badge status-${status.toLowerCase()}" data-status>${status}</span>
+                    <span class="url" title="${escapeHtml(url || '')}">${escapeHtml(url || '—')}</span>
+                    <div class="actions">
+                        <button class="btn-primary" data-action="start" ${status === 'Running' || status === 'Starting' ? 'disabled' : ''}>Start</button>
+                        <button class="btn-danger" data-action="stop" ${status !== 'Running' && status !== 'Starting' ? 'disabled' : ''}>Stop</button>
+                        <button class="btn-secondary" data-action="restart" ${status !== 'Running' && status !== 'Starting' ? 'disabled' : ''}>Restart</button>
+                        <button class="btn-secondary" data-action="open" ${!url ? 'disabled' : ''}>Open</button>
+                        <button class="btn-secondary" data-action="logs">View Logs</button>
+                        <button class="btn-secondary" data-action="folder">Folder</button>
+                    </div>
+                    <div class="dep-error-row" data-dep-error style="display: none; width: 100%; margin: 0; grid-column: 1 / -1;">
+                        <span data-dep-msg></span>
+                        <button class="btn-primary" data-action="install">Run Install</button>
+                    </div>
+                `;
+                row.querySelector('[data-action="start"]').onclick = () => startProject(p.fullPath, p.framework, p.name, row);
+                row.querySelector('[data-action="stop"]').onclick = () => stopProject(p.fullPath, row);
+                row.querySelector('[data-action="restart"]').onclick = () => restartProject(p.fullPath, row);
+                row.querySelector('[data-action="open"]').onclick = () => openProjectUrl(p.fullPath);
+                row.querySelector('[data-action="logs"]').onclick = () => openLogsPanel(p.fullPath, p.name);
+                row.querySelector('[data-action="folder"]').onclick = () => window.electronAPI.openFolder(p.fullPath);
+                row.querySelector('[data-action="install"]').onclick = () => runInstall(p.fullPath, row);
+                list.appendChild(row);
+            }
+        }
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            const div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+
+        async function startProject(projectId, framework, name, rowEl) {
+            const depCheck = await window.electronAPI.serverCheckRuntimeDeps(projectId, framework);
+            if (!depCheck.ok) {
+                const errBox = rowEl.querySelector('[data-dep-error]');
+                const msg = rowEl.querySelector('[data-dep-msg]');
+                if (errBox && msg) { msg.textContent = depCheck.error; errBox.style.display = 'flex'; }
+                return;
+            }
+            rowEl.querySelector('[data-dep-error]').style.display = 'none';
+            const res = await window.electronAPI.serverStart(projectId);
+            if (!res.success) alert(res.error || 'Start failed');
+            else updateRowStatus(rowEl, 'Starting');
+        }
+
+        async function stopProject(projectId, rowEl) {
+            await window.electronAPI.serverStop(projectId);
+            updateRowStatus(rowEl, 'Stopped');
+        }
+
+        async function restartProject(projectId, rowEl) {
+            const res = await window.electronAPI.serverRestart(projectId);
+            if (!res.success) alert(res.error || 'Restart failed');
+            else updateRowStatus(rowEl, 'Starting');
+        }
+
+        function updateRowStatus(rowEl, status) {
+            projectStatusMap[rowEl.dataset.projectId] = status;
+            const badge = rowEl.querySelector('[data-status]');
+            if (badge) { badge.textContent = status; badge.className = 'status-badge status-' + status.toLowerCase(); }
+            const startBtn = rowEl.querySelector('[data-action="start"]');
+            const stopBtn = rowEl.querySelector('[data-action="stop"]');
+            const restartBtn = rowEl.querySelector('[data-action="restart"]');
+            if (startBtn) startBtn.disabled = status === 'Running' || status === 'Starting';
+            if (stopBtn) stopBtn.disabled = status !== 'Running' && status !== 'Starting';
+            if (restartBtn) restartBtn.disabled = status !== 'Running' && status !== 'Starting';
+            refreshRowUrl(rowEl);
+        }
+
+        async function refreshRowUrl(rowEl) {
+            const projectId = rowEl.dataset.projectId;
+            const url = await window.electronAPI.serverUrl(projectId);
+            const urlEl = rowEl.querySelector('.url');
+            if (urlEl) { urlEl.textContent = url || '—'; urlEl.title = url || ''; }
+            const openBtn = rowEl.querySelector('[data-action="open"]');
+            if (openBtn) openBtn.disabled = !url;
+        }
+
+        async function openProjectUrl(projectId) {
+            const url = await window.electronAPI.serverUrl(projectId);
+            if (url) window.electronAPI.serverOpenUrl(url);
+        }
+
+        function openLogsPanel(projectId, name) {
+            logsPanelProjectId = projectId;
+            document.getElementById('logs-panel-title').textContent = `Logs: ${name}`;
+            document.getElementById('logs-panel-content').innerHTML = '';
+            document.getElementById('logs-panel').classList.add('open');
+        }
+
+        function closeLogsPanel() {
+            logsPanelProjectId = null;
+            document.getElementById('logs-panel').classList.remove('open');
+        }
+
+        async function runInstall(projectId, rowEl) {
+            const res = await window.electronAPI.projectInstall(projectId);
+            if (res.success) rowEl.querySelector('[data-dep-error]').style.display = 'none';
+            else alert(res.error || 'Install failed');
+        }
+
+        window.electronAPI.onServerStatus((data) => {
+            const { projectId, status } = data;
+            projectStatusMap[projectId] = status;
+            const row = Array.from(document.querySelectorAll('.project-row')).find(r => r.dataset.projectId === projectId);
+            if (row) updateRowStatus(row, status);
+        });
+
+        window.electronAPI.onServerLog((data) => {
+            if (data.projectId !== logsPanelProjectId) return;
+            const content = document.getElementById('logs-panel-content');
+            if (!content) return;
+            const span = document.createElement('span');
+            span.style.color = data.type === 'stderr' ? '#f87171' : '#a3e635';
+            span.textContent = data.data;
+            content.appendChild(span);
+            content.scrollTop = content.scrollHeight;
         });
 
         checkDeps();

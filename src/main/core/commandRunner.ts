@@ -105,4 +105,13 @@ export class CommandRunner {
 
         this.jobs.delete(jobId);
     }
+
+    getPid(jobId: string): number | undefined {
+        const child = this.jobs.get(jobId);
+        return child?.pid;
+    }
+
+    hasJob(jobId: string): boolean {
+        return this.jobs.has(jobId);
+    }
 }

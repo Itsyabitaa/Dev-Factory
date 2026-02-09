@@ -169,6 +169,15 @@ export class ProjectService {
         return { success: true };
     }
 
+    getProjects(): Array<{ name: string; framework: Framework; path: string; fullPath: string; createdAt: string; port?: number }> {
+        if (!fs.existsSync(this.manifestPath)) return [];
+        try {
+            return JSON.parse(fs.readFileSync(this.manifestPath, "utf8"));
+        } catch {
+            return [];
+        }
+    }
+
     private saveManifest(payload: ProjectPayload) {
         let projects = [];
         if (fs.existsSync(this.manifestPath)) {

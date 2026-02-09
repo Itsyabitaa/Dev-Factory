@@ -121,6 +121,13 @@ export class HostService {
         }
     }
 
+    /** Get mapped domain for a project (projectId = project name as stored when mapping). */
+    getDomainForProject(projectId: string): string | null {
+        const registry = this.getRegistry();
+        const entry = registry.find((d) => d.projectId === projectId);
+        return entry?.domain ?? null;
+    }
+
     private vhostMarker(domain: string, suffix: "start" | "end"): string {
         return `# DevFactory VirtualHost - ${domain} - ${suffix}`;
     }
