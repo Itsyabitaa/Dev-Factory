@@ -30,4 +30,27 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
     projectInstall: (projectPath) => electron_1.ipcRenderer.invoke("project:install", projectPath),
     onServerStatus: (callback) => electron_1.ipcRenderer.on("server:status", (_event, value) => callback(value)),
     onServerLog: (callback) => electron_1.ipcRenderer.on("server:log", (_event, value) => callback(value)),
+    // Sprint 6 — Proxy (real domains without ports)
+    proxyStart: () => electron_1.ipcRenderer.invoke("proxy:start"),
+    proxyStop: () => electron_1.ipcRenderer.invoke("proxy:stop"),
+    proxyStatus: () => electron_1.ipcRenderer.invoke("proxy:status"),
+    proxyPort: () => electron_1.ipcRenderer.invoke("proxy:port"),
+    proxyDomainUrl: (domain) => electron_1.ipcRenderer.invoke("proxy:domain-url", domain),
+    onProxyStatus: (callback) => electron_1.ipcRenderer.on("proxy:status", (_event, value) => callback(value)),
+    // Sprint 7
+    projectDelete: (projectId) => electron_1.ipcRenderer.invoke("project:delete", projectId),
+    proxyRepair: () => electron_1.ipcRenderer.invoke("proxy:repair"),
+    logsExport: () => electron_1.ipcRenderer.invoke("logs:export"),
+    logsExportToFile: () => electron_1.ipcRenderer.invoke("logs:export-to-file"),
+    logsDir: () => electron_1.ipcRenderer.invoke("logs:dir"),
+    appUserDataPath: () => electron_1.ipcRenderer.invoke("app:user-data-path"),
+    // Sprint 8
+    projectImport: () => electron_1.ipcRenderer.invoke("project:import"),
+    projectUpdate: (projectId, updates) => electron_1.ipcRenderer.invoke("project:update", { projectId, updates }),
+    getProject: (fullPath) => electron_1.ipcRenderer.invoke("project:get", fullPath),
+    projectDetectFramework: (folderPath) => electron_1.ipcRenderer.invoke("project:detect-framework", folderPath),
+    projectDetectPackageManager: (folderPath) => electron_1.ipcRenderer.invoke("project:detect-package-manager", folderPath),
+    projectGitInit: (projectPath) => electron_1.ipcRenderer.invoke("project:git-init", projectPath),
+    presetsList: () => electron_1.ipcRenderer.invoke("presets:list"),
+    presetsForFramework: (framework) => electron_1.ipcRenderer.invoke("presets:for-framework", framework),
 });
