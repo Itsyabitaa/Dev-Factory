@@ -9,6 +9,7 @@ DevFactory is a powerful desktop application and CLI tool designed to simplify t
 - **Cross-Platform**: Built with Electron to support Windows, macOS, and Linux.
 - **Live Logs**: View real-time output from project creation and dev servers.
 - **Clean Domains**: Manage local projects with clean, custom domain suffixes.
+- **Local Proxy**: Run a local proxy (Caddy) so you can open `http://myapp.test:8080` without typing the dev server port.
 
 ## 🛠️ Supported Frameworks (v1)
 
@@ -72,6 +73,85 @@ To run the DevFactory desktop app:
   npm run build
   npm start
   ```
+
+### Local proxy (real domains without ports)
+
+The app can route `http://<project>.test:8080` to your running dev server so you don’t need to remember ports.
+
+1. **Install Caddy** (required for the proxy):
+   - Download from [caddyserver.com/download](https://caddyserver.com/download) for your OS.
+   - Place the binary in the app’s `bin` folder:
+     - **Windows**: `%APPDATA%\devfactory\bin\caddy.exe`
+     - **macOS**: `~/Library/Application Support/devfactory/bin/caddy`
+     - **Linux**: `~/.config/devfactory/bin/caddy`
+2. In the app header, click **Start Proxy**. The proxy listens on port **8080** (no admin rights needed).
+3. Create a project with **Create domain mapping** so `myapp.test` points to `127.0.0.1`.
+4. Start the project, then use **Open Domain** to open `http://myapp.test:8080`.
+
+If port 8080 is in use, the app will show a clear error; free the port or stop the other service.
+
+## 📦 Packaging & installers
+
+Build installers for your OS (no proxy binary is bundled; install Caddy separately if you use the proxy):
+
+```bash
+npm run dist        # Build for current OS
+npm run dist:win    # Windows: NSIS + portable
+npm run dist:mac    # macOS: .dmg
+npm run dist:linux  # Linux: AppImage + .deb
+```
+
+Output goes to the `release/` folder. The app runs without dev tooling once installed.
+
+## 📂 App data (persistent, no writes to install dir)
+
+All persistent data lives in the OS app-data directory:
+
+| Item          | Location (relative to app data) |
+|---------------|----------------------------------|
+| Projects list | `projects.json`                  |
+| Domain map    | `domains.json`                   |
+| Proxy config  | `proxy/Caddyfile`                |
+| Logs          | `logs/` (session logs + export)  |
+
+- **Windows**: `%APPDATA%\devfactory\`
+- **macOS**: `~/Library/Application Support/devfactory/`
+- **Linux**: `~/.config/devfactory/`
+
+Reinstalling the app does not delete these; uninstall does not remove them unless you choose to delete app data.
+
+## 🌐 Distributing the app and updates
+
+**Can I share the .exe with the public?** Yes. You can host the installer or portable exe for download (e.g. on GitHub Releases, your website, or a file host). Unsigned builds may show a SmartScreen warning on first run; users can choose “Run anyway.” For wider trust, consider [code signing](https://www.electronjs.org/docs/latest/tutorial/code-signing) (Windows: EV certificate).
+
+**How do users get updates?** The app uses **electron-updater** and checks for updates on startup (when running the installed or portable build, not in dev). When you publish a new version, users are prompted to restart to install it.
+
+### Publishing so the app can find updates (GitHub Releases)
+
+1. **Set your repo** in `package.json`:
+   ```json
+   "repository": { "type": "git", "url": "https://github.com/YOUR_USERNAME/YOUR_REPO.git" }
+   ```
+   Replace `YOUR_USERNAME` and `YOUR_REPO` with your GitHub user and repo name.
+
+2. **Create a GitHub release** for each version (e.g. tag `v1.0.0`).
+
+3. **Upload build artifacts** to that release:
+   - **Windows**: `DevFactory Setup 1.0.0.exe` and `latest.yml`.
+   - **macOS**: The `.dmg` and `latest-mac.yml`.
+   - **Linux**: `DevFactory-1.0.0.AppImage` (and optionally `devfactory_1.0.0_amd64.deb`) and `latest-linux.yml` from `release/`.
+
+   The app looks at the `latest.yml` (and platform-specific files) to know the newest version and download URL.
+
+4. **Optional – publish from CI**: To publish from GitHub Actions, set a `GH_TOKEN` secret and run `npm run dist:win` (or your target); electron-builder can publish to GitHub Releases when `build.publish` is set to `{ "provider": "github" }`.
+
+### Release checklist
+
+1. Bump `version` in `package.json`.
+2. Run `npm run dist:win` (or `dist:mac` / `dist:linux`).
+3. Create a new release on GitHub with tag `v1.0.1` (match the version).
+4. Upload the installer and `latest.yml` (and any other `latest-*.yml`) from `release/`.
+5. Users with the app open will get an update prompt after the next check (or on next launch); they click “Restart now” to install.
 
 ## 📁 Project Structure
 
