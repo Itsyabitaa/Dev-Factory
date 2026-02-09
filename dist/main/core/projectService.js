@@ -85,6 +85,14 @@ class ProjectService {
                     args: ["create-next-app@latest", name, "--yes"],
                     cwd: projectPath,
                 });
+                if (options.installDeps) {
+                    steps.push({
+                        name: "Installing dependencies...",
+                        cmd: "npm",
+                        args: ["install"],
+                        cwd: path_1.default.join(projectPath, name),
+                    });
+                }
                 break;
             case "angular":
                 steps.push({
@@ -93,6 +101,14 @@ class ProjectService {
                     args: ["-p", "@angular/cli", "ng", "new", name, "--defaults"],
                     cwd: projectPath,
                 });
+                if (options.installDeps) {
+                    steps.push({
+                        name: "Installing dependencies...",
+                        cmd: "npm",
+                        args: ["install"],
+                        cwd: path_1.default.join(projectPath, name),
+                    });
+                }
                 break;
         }
         if (options.initGit) {
