@@ -9,11 +9,15 @@ const fs_1 = __importDefault(require("fs"));
 const commandRunner_1 = require("./core/commandRunner");
 const projectService_1 = require("./core/projectService");
 const hostService_1 = require("./core/hostService");
+const portService_1 = require("./core/portService");
+const serverService_1 = require("./core/serverService");
 const child_process_1 = require("child_process");
 let mainWindow = null;
 const runner = new commandRunner_1.CommandRunner();
 const projectService = new projectService_1.ProjectService(runner);
 const hostService = new hostService_1.HostService();
+const portService = new portService_1.PortService();
+let serverService = null;
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 1000,
@@ -24,6 +28,10 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: false,
         },
+    });
+    serverService = new serverService_1.ServerService(runner, projectService, portService, hostService, {
+        sendStatus: (projectId, status) => mainWindow?.webContents.send("server:status", { projectId, status }),
+        sendLog: (projectId, data, type) => mainWindow?.webContents.send("server:log", { projectId, data, type }),
     });
     mainWindow.loadFile(path_1.default.join(__dirname, "../../src/renderer/index.html"));
 }
@@ -141,4 +149,41 @@ electron_1.ipcMain.handle("project:document-root", async (_event, payload) => {
         return fs_1.default.existsSync(withBrowser) ? withBrowser : withoutBrowser;
     }
     return path_1.default.join(projectPath, "dist");
+});
+// Sprint 5: Project list + Dev server control
+electron_1.ipcMain.handle("project:list", async () => {
+    return projectService.getProjects();
+});
+electron_1.ipcMain.handle("server:start", async (_event, projectId) => {
+    return serverService?.startProject(projectId) ?? { success: false, error: "Server service not ready." };
+});
+electron_1.ipcMain.handle("server:stop", async (_event, projectId) => {
+    return serverService?.stopProject(projectId) ?? { success: true };
+});
+electron_1.ipcMain.handle("server:restart", async (_event, projectId) => {
+    return serverService?.restartProject(projectId) ?? { success: false, error: "Server service not ready." };
+});
+electron_1.ipcMain.handle("server:status", async (_event, projectId) => {
+    return serverService?.getStatus(projectId) ?? "Stopped";
+});
+electron_1.ipcMain.handle("server:url", async (_event, projectId) => {
+    return serverService?.getUrl(projectId) ?? null;
+});
+electron_1.ipcMain.handle("server:open-url", async (_event, url) => {
+    if (url)
+        electron_1.shell.openExternal(url);
+});
+electron_1.ipcMain.handle("server:check-runtime-deps", async (_event, payload) => {
+    if (!serverService)
+        return { ok: false, error: "Server service not ready." };
+    return serverService.checkRuntimeDeps(payload.projectPath, payload.framework);
+});
+electron_1.ipcMain.handle("project:install", async (_event, projectPath) => {
+    try {
+        const result = await runner.run(`install_${Date.now()}`, "npm", ["install"], { cwd: projectPath }, {});
+        return { success: result.code === 0, error: result.code !== 0 ? "npm install failed" : undefined };
+    }
+    catch (error) {
+        return { success: false, error: error.message };
+    }
 });
