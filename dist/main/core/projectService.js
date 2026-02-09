@@ -136,6 +136,16 @@ class ProjectService {
         this.saveManifest(payload);
         return { success: true };
     }
+    getProjects() {
+        if (!fs_1.default.existsSync(this.manifestPath))
+            return [];
+        try {
+            return JSON.parse(fs_1.default.readFileSync(this.manifestPath, "utf8"));
+        }
+        catch {
+            return [];
+        }
+    }
     saveManifest(payload) {
         let projects = [];
         if (fs_1.default.existsSync(this.manifestPath)) {

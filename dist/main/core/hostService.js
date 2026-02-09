@@ -111,6 +111,12 @@ class HostService {
             return false;
         }
     }
+    /** Get mapped domain for a project (projectId = project name as stored when mapping). */
+    getDomainForProject(projectId) {
+        const registry = this.getRegistry();
+        const entry = registry.find((d) => d.projectId === projectId);
+        return entry?.domain ?? null;
+    }
     vhostMarker(domain, suffix) {
         return `# DevFactory VirtualHost - ${domain} - ${suffix}`;
     }

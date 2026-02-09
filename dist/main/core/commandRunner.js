@@ -82,5 +82,12 @@ class CommandRunner {
         }
         this.jobs.delete(jobId);
     }
+    getPid(jobId) {
+        const child = this.jobs.get(jobId);
+        return child?.pid;
+    }
+    hasJob(jobId) {
+        return this.jobs.has(jobId);
+    }
 }
 exports.CommandRunner = CommandRunner;
