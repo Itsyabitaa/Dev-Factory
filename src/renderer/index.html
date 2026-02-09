@@ -459,7 +459,16 @@
             <nav class="nav-links">
                 <a href="#" id="nav-create" class="active" onclick="showView('view-framework'); document.querySelectorAll('.nav-links a').forEach(a=>a.classList.remove('active')); document.getElementById('nav-create').classList.add('active'); return false;">Create Project</a>
                 <a href="#" id="nav-projects" onclick="showView('view-dashboard'); loadDashboard(); document.querySelectorAll('.nav-links a').forEach(a=>a.classList.remove('active')); document.getElementById('nav-projects').classList.add('active'); return false;">Projects</a>
+                <a href="#" id="nav-system-check" onclick="showView('view-system-check'); loadSystemCheck(); document.querySelectorAll('.nav-links a').forEach(a=>a.classList.remove('active')); document.getElementById('nav-system-check').classList.add('active'); return false;">System Check</a>
             </nav>
+            <div id="proxy-status" class="proxy-status-wrap" style="display: flex; align-items: center; gap: 8px;">
+                <span id="proxy-badge" class="status-item" title="Local proxy for http://*.test"><span class="status-dot dot-red"></span> Proxy: <span id="proxy-state">Stopped</span></span>
+                <button type="button" class="btn-secondary" id="proxy-start-btn" style="padding: 6px 12px; font-size: 0.85rem;">Start Proxy</button>
+                <button type="button" class="btn-secondary" id="proxy-stop-btn" style="padding: 6px 12px; font-size: 0.85rem;" disabled>Stop Proxy</button>
+                <button type="button" class="btn-secondary" id="proxy-repair-btn" style="padding: 6px 12px; font-size: 0.85rem;" title="Rebuild proxy routes from projects">Repair</button>
+                <span id="proxy-error" style="color: var(--danger); font-size: 0.8rem; max-width: 180px; overflow: hidden; text-overflow: ellipsis;" title=""></span>
+            </div>
+            <button type="button" class="btn-secondary" id="export-logs-btn" style="padding: 6px 12px; font-size: 0.85rem;">Export Logs</button>
             <div class="system-status" id="dep-status"></div>
         </div>
     </header>
@@ -507,6 +516,12 @@
                         <input type="text" id="project-path" readonly placeholder="Click Browse to select...">
                         <button class="btn-secondary" onclick="browseFolder()">Browse</button>
                     </div>
+                </div>
+                <div class="form-group" id="preset-group" style="display: none;">
+                    <label>Preset / Template</label>
+                    <select id="project-preset" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+                        <option value="">Default</option>
+                    </select>
                 </div>
                 <div class="checkbox-group">
                     <label class="checkbox-item">
@@ -562,16 +577,58 @@
                 </div>
             </div>
 
-            <!-- Sprint 5: Project Dashboard -->
+            <!-- Sprint 5: Project Dashboard (Sprint 8: search, sort, import) -->
             <div id="view-dashboard" class="view">
                 <h2>Projects</h2>
-                <p style="color: var(--text-dim); margin-bottom: 20px;">Start, stop, and open your dev servers.</p>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 20px;">
+                    <button type="button" class="btn-primary" onclick="importProject()">Import Project</button>
+                    <input type="text" id="dashboard-search" placeholder="Search projects..." style="max-width: 200px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+                    <select id="dashboard-sort" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+                        <option value="name">Sort by name</option>
+                        <option value="framework">Sort by framework</option>
+                        <option value="lastOpened">Last opened</option>
+                    </select>
+                </div>
                 <ul id="project-list" class="project-list"></ul>
-                <p id="dashboard-empty" style="color: var(--text-dim); display: none;">No projects yet. Create one from Create Project.</p>
+                <p id="dashboard-empty" style="color: var(--text-dim); display: none;">No projects yet. Create one or Import Project.</p>
+            </div>
+
+            <!-- Sprint 7: System Check -->
+            <div id="view-system-check" class="view">
+                <h2>System Check</h2>
+                <p style="color: var(--text-dim); margin-bottom: 20px;">Required tools for scaffolding and running projects.</p>
+                <ul id="system-check-list" class="project-list" style="max-width: 560px;"></ul>
+                <div style="margin-top: 24px;">
+                    <p style="color: var(--text-dim); margin-bottom: 12px;">Install guides:</p>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                        <button type="button" class="btn-secondary" onclick="window.electronAPI.serverOpenUrl('https://nodejs.org/')">How to install Node.js</button>
+                        <button type="button" class="btn-secondary" onclick="window.electronAPI.serverOpenUrl('https://getcomposer.org/doc/00-intro.md')">How to install Composer</button>
+                    </div>
+                </div>
             </div>
 
         </div>
     </main>
+
+    <!-- Sprint 8: Run profile modal -->
+    <div id="run-profile-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; align-items: center; justify-content: center;">
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; max-width: 480px; width: 90%;">
+            <h3 style="margin-top: 0;">Edit run profile</h3>
+            <p style="color: var(--text-dim); font-size: 0.9rem;">Override how this project is started. Use <code>{{port}}</code> for the port.</p>
+            <div class="form-group">
+                <label>Port</label>
+                <input type="number" id="run-profile-port" placeholder="e.g. 3000" min="1" max="65535" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+            </div>
+            <div class="form-group">
+                <label>Start command (optional)</label>
+                <input type="text" id="run-profile-command" placeholder="e.g. npm run dev -- -p {{port}}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text);">
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="button" class="btn-primary" onclick="saveRunProfile()">Save</button>
+                <button type="button" class="btn-secondary" onclick="closeRunProfileModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Sprint 5: Live logs panel -->
     <div id="logs-panel" class="logs-panel">
@@ -670,10 +727,18 @@
             }
         }
 
-        function selectFramework(fw) {
+        async function selectFramework(fw) {
             selectedFramework = fw;
             document.querySelectorAll('.framework-card').forEach(c => c.classList.remove('selected'));
             document.getElementById('details-title').textContent = `Project Details: ${fw.charAt(0).toUpperCase() + fw.slice(1)}`;
+            const presetGroup = document.getElementById('preset-group');
+            const presetSelect = document.getElementById('project-preset');
+            const presets = await window.electronAPI.presetsForFramework(fw);
+            presetSelect.innerHTML = '<option value="">Default</option>';
+            if (presets && presets.length > 0) {
+                presetGroup.style.display = 'block';
+                presets.forEach(pr => presetSelect.appendChild(new Option(pr.label, pr.id)));
+            } else presetGroup.style.display = 'none';
             showView('view-details');
         }
 
@@ -745,6 +810,7 @@
             showView('view-progress');
             document.getElementById('log-container').innerHTML = '';
 
+            const presetId = document.getElementById('project-preset')?.value || undefined;
             const payload = {
                 framework: selectedFramework,
                 name,
@@ -752,7 +818,8 @@
                 options: {
                     installDeps: document.getElementById('opt-deps').checked,
                     initGit: document.getElementById('opt-git').checked
-                }
+                },
+                presetId
             };
 
             const response = await window.electronAPI.createProject(payload);
@@ -818,12 +885,20 @@
         const projectStatusMap = {};
         let logsPanelProjectId = null;
 
+        let runProfileModalProjectId = null;
         async function loadDashboard() {
             const list = document.getElementById('project-list');
             const empty = document.getElementById('dashboard-empty');
-            const projects = await window.electronAPI.getProjectList();
+            let projects = await window.electronAPI.getProjectList();
+            if (!projects) projects = [];
+            const search = (document.getElementById('dashboard-search')?.value || '').toLowerCase();
+            if (search) projects = projects.filter(p => (p.name || '').toLowerCase().includes(search) || (p.framework || '').toLowerCase().includes(search));
+            const sortBy = document.getElementById('dashboard-sort')?.value || 'name';
+            if (sortBy === 'name') projects.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            else if (sortBy === 'framework') projects.sort((a, b) => (a.framework || '').localeCompare(b.framework || ''));
+            else if (sortBy === 'lastOpened') projects.sort((a, b) => (b.lastOpenedAt || '').localeCompare(a.lastOpenedAt || ''));
             list.innerHTML = '';
-            if (!projects || projects.length === 0) {
+            if (projects.length === 0) {
                 empty.style.display = 'block';
                 return;
             }
@@ -846,8 +921,12 @@
                         <button class="btn-danger" data-action="stop" ${status !== 'Running' && status !== 'Starting' ? 'disabled' : ''}>Stop</button>
                         <button class="btn-secondary" data-action="restart" ${status !== 'Running' && status !== 'Starting' ? 'disabled' : ''}>Restart</button>
                         <button class="btn-secondary" data-action="open" ${!url ? 'disabled' : ''}>Open</button>
+                        <button class="btn-secondary" data-action="open-domain" ${!(p.domain) ? 'disabled data-no-domain' : ''} title="${p.domain ? 'Open http://' + escapeHtml(p.domain) + ' (proxy)' : 'Map a domain in Create Project'}">Open Domain</button>
                         <button class="btn-secondary" data-action="logs">View Logs</button>
                         <button class="btn-secondary" data-action="folder">Folder</button>
+                        <button class="btn-secondary" data-action="git-init" title="Initialize Git">Git init</button>
+                        <button class="btn-secondary" data-action="run-profile" title="Edit start command/port">Run profile</button>
+                        <button class="btn-danger" data-action="delete" title="Remove from list and hosts">Delete</button>
                     </div>
                     <div class="dep-error-row" data-dep-error style="display: none; width: 100%; margin: 0; grid-column: 1 / -1;">
                         <span data-dep-msg></span>
@@ -858,11 +937,25 @@
                 row.querySelector('[data-action="stop"]').onclick = () => stopProject(p.fullPath, row);
                 row.querySelector('[data-action="restart"]').onclick = () => restartProject(p.fullPath, row);
                 row.querySelector('[data-action="open"]').onclick = () => openProjectUrl(p.fullPath);
+                row.querySelector('[data-action="open-domain"]').onclick = () => openDomainUrl(p.domain);
                 row.querySelector('[data-action="logs"]').onclick = () => openLogsPanel(p.fullPath, p.name);
-                row.querySelector('[data-action="folder"]').onclick = () => window.electronAPI.openFolder(p.fullPath);
+                row.querySelector('[data-action="folder"]').onclick = () => {
+                    window.electronAPI.projectUpdate(p.fullPath, { lastOpenedAt: new Date().toISOString() });
+                    window.electronAPI.openFolder(p.fullPath);
+                };
+                row.querySelector('[data-action="git-init"]').onclick = () => runGitInit(p.fullPath, row);
+                row.querySelector('[data-action="run-profile"]').onclick = () => openRunProfileModal(p.fullPath, p.name);
+                row.querySelector('[data-action="delete"]').onclick = () => deleteProject(p.fullPath, row);
                 row.querySelector('[data-action="install"]').onclick = () => runInstall(p.fullPath, row);
                 list.appendChild(row);
             }
+            attachDashboardSearchSort();
+        }
+        function attachDashboardSearchSort() {
+            const searchEl = document.getElementById('dashboard-search');
+            const sortEl = document.getElementById('dashboard-sort');
+            if (searchEl) searchEl.oninput = () => loadDashboard();
+            if (sortEl) sortEl.onchange = () => loadDashboard();
         }
 
         function escapeHtml(s) {
@@ -881,6 +974,7 @@
                 return;
             }
             rowEl.querySelector('[data-dep-error]').style.display = 'none';
+            window.electronAPI.projectUpdate(projectId, { lastOpenedAt: new Date().toISOString() });
             const res = await window.electronAPI.serverStart(projectId);
             if (!res.success) alert(res.error || 'Start failed');
             else updateRowStatus(rowEl, 'Starting');
@@ -921,6 +1015,15 @@
 
         async function openProjectUrl(projectId) {
             const url = await window.electronAPI.serverUrl(projectId);
+            if (url) {
+                window.electronAPI.projectUpdate(projectId, { lastOpenedAt: new Date().toISOString() });
+                window.electronAPI.serverOpenUrl(url);
+            }
+        }
+
+        async function openDomainUrl(domain) {
+            if (!domain) return;
+            const url = await window.electronAPI.proxyDomainUrl(domain);
             if (url) window.electronAPI.serverOpenUrl(url);
         }
 
@@ -936,10 +1039,17 @@
             document.getElementById('logs-panel').classList.remove('open');
         }
 
-        async function runInstall(projectId, rowEl) {
-            const res = await window.electronAPI.projectInstall(projectId);
-            if (res.success) rowEl.querySelector('[data-dep-error]').style.display = 'none';
-            else alert(res.error || 'Install failed');
+        async function runInstall(projectPath, rowEl) {
+            showView('view-progress');
+            document.getElementById('log-container').innerHTML = '';
+            document.getElementById('current-step').textContent = 'Installing dependencies...';
+            const res = await window.electronAPI.projectInstall(projectPath);
+            if (res.success) {
+                rowEl.querySelector('[data-dep-error]').style.display = 'none';
+                alert('Dependencies installed.');
+            } else alert(res.error || 'Install failed');
+            showView('view-dashboard');
+            loadDashboard();
         }
 
         window.electronAPI.onServerStatus((data) => {
@@ -960,7 +1070,118 @@
             content.scrollTop = content.scrollHeight;
         });
 
+        // Sprint 6 — Proxy UI
+        let proxyStatusState = 'Stopped';
+        function updateProxyUI(status, error) {
+            proxyStatusState = status;
+            const stateEl = document.getElementById('proxy-state');
+            const badge = document.getElementById('proxy-badge');
+            const startBtn = document.getElementById('proxy-start-btn');
+            const stopBtn = document.getElementById('proxy-stop-btn');
+            const errEl = document.getElementById('proxy-error');
+            if (stateEl) stateEl.textContent = status;
+            if (badge) {
+                const dot = badge.querySelector('.status-dot');
+                if (dot) {
+                    dot.className = 'status-dot ' + (status === 'Running' ? 'dot-green' : status === 'Error' ? 'dot-red' : 'dot-red');
+                }
+            }
+            if (startBtn) startBtn.disabled = status === 'Running';
+            if (stopBtn) stopBtn.disabled = status !== 'Running';
+            if (errEl) { errEl.textContent = error || ''; errEl.title = error || ''; }
+            document.querySelectorAll('.project-row [data-action="open-domain"]').forEach(btn => {
+                if (!btn.hasAttribute('data-no-domain')) btn.disabled = status !== 'Running';
+            });
+        }
+        async function refreshProxyStatus() {
+            const res = await window.electronAPI.proxyStatus();
+            updateProxyUI(res.status, res.error);
+        }
+        document.getElementById('proxy-start-btn').addEventListener('click', async () => {
+            const res = await window.electronAPI.proxyStart();
+            if (!res.success) alert(res.error || 'Failed to start proxy');
+            await refreshProxyStatus();
+        });
+        document.getElementById('proxy-stop-btn').addEventListener('click', async () => {
+            await window.electronAPI.proxyStop();
+            await refreshProxyStatus();
+        });
+        document.getElementById('proxy-repair-btn').addEventListener('click', async () => {
+            const res = await window.electronAPI.proxyRepair();
+            if (res.success) alert(res.message || 'Proxy routes repaired.');
+            else alert(res.error || 'Repair failed');
+        });
+        window.electronAPI.onProxyStatus((data) => updateProxyUI(data.status, data.error));
+
+        document.getElementById('export-logs-btn').addEventListener('click', async () => {
+            const res = await window.electronAPI.logsExportToFile();
+            if (res && res.success) alert('Logs saved to ' + res.path);
+            else if (res && !res.success) { /* cancelled */ }
+            else alert('Export failed');
+        });
+
+        async function loadSystemCheck() {
+            const deps = await window.electronAPI.checkDeps();
+            const list = document.getElementById('system-check-list');
+            list.innerHTML = '';
+            deps.forEach(dep => {
+                const li = document.createElement('li');
+                li.className = 'project-row';
+                li.innerHTML = `
+                    <span class="name">${dep.tool.toUpperCase()}</span>
+                    <span class="status-badge status-${dep.installed ? 'running' : 'error'}">${dep.installed ? 'Found' : 'Not found'}</span>
+                    ${dep.error ? '<span style="color:var(--text-dim);">' + escapeHtml(dep.error) + '</span>' : ''}
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        async function deleteProject(projectId, rowEl) {
+            if (!confirm('Remove this project from DevFactory? This will stop the server (if running), remove the proxy route, and remove the hosts entry. The project folder is not deleted.')) return;
+            const res = await window.electronAPI.projectDelete(projectId);
+            if (res.success) rowEl.remove();
+            else alert(res.error || 'Delete failed');
+        }
+        async function importProject() {
+            const res = await window.electronAPI.projectImport();
+            if (res.success) { loadDashboard(); alert(`Imported as ${res.framework}.`); }
+            else alert(res.error || 'Import failed');
+        }
+        async function runGitInit(projectPath, rowEl) {
+            showView('view-progress');
+            document.getElementById('current-step').textContent = 'Git init...';
+            document.getElementById('log-container').innerHTML = '';
+            const res = await window.electronAPI.projectGitInit(projectPath);
+            if (res.success) alert('Git initialized.');
+            else alert(res.error || 'Git init failed');
+            showView('view-dashboard');
+            loadDashboard();
+        }
+        function openRunProfileModal(projectId, name) {
+            runProfileModalProjectId = projectId;
+            document.getElementById('run-profile-modal').style.display = 'flex';
+            window.electronAPI.getProject(projectId).then(p => {
+                const rp = p?.runProfile;
+                document.getElementById('run-profile-port').value = rp?.port ?? '';
+                document.getElementById('run-profile-command').value = rp?.startCommand ?? '';
+            });
+        }
+        function closeRunProfileModal() {
+            runProfileModalProjectId = null;
+            document.getElementById('run-profile-modal').style.display = 'none';
+        }
+        async function saveRunProfile() {
+            if (!runProfileModalProjectId) return;
+            const portVal = document.getElementById('run-profile-port').value;
+            const port = portVal ? parseInt(portVal, 10) : undefined;
+            const startCommand = document.getElementById('run-profile-command').value.trim() || undefined;
+            await window.electronAPI.projectUpdate(runProfileModalProjectId, { runProfile: { port, startCommand } });
+            closeRunProfileModal();
+            loadDashboard();
+        }
+
         checkDeps();
+        refreshProxyStatus();
     </script>
 </body>
 
