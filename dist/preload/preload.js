@@ -18,4 +18,16 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
     addDomain: (domain, projectId, documentRoot) => electron_1.ipcRenderer.invoke("host:add", { domain, projectId, documentRoot }),
     removeDomain: (domain) => electron_1.ipcRenderer.invoke("host:remove", domain),
     isDomainMapped: (domain) => electron_1.ipcRenderer.invoke("host:is-mapped", domain),
+    // Sprint 5 — Dev server control
+    getProjectList: () => electron_1.ipcRenderer.invoke("project:list"),
+    serverStart: (projectId) => electron_1.ipcRenderer.invoke("server:start", projectId),
+    serverStop: (projectId) => electron_1.ipcRenderer.invoke("server:stop", projectId),
+    serverRestart: (projectId) => electron_1.ipcRenderer.invoke("server:restart", projectId),
+    serverStatus: (projectId) => electron_1.ipcRenderer.invoke("server:status", projectId),
+    serverUrl: (projectId) => electron_1.ipcRenderer.invoke("server:url", projectId),
+    serverOpenUrl: (url) => electron_1.ipcRenderer.invoke("server:open-url", url),
+    serverCheckRuntimeDeps: (projectPath, framework) => electron_1.ipcRenderer.invoke("server:check-runtime-deps", { projectPath, framework }),
+    projectInstall: (projectPath) => electron_1.ipcRenderer.invoke("project:install", projectPath),
+    onServerStatus: (callback) => electron_1.ipcRenderer.on("server:status", (_event, value) => callback(value)),
+    onServerLog: (callback) => electron_1.ipcRenderer.on("server:log", (_event, value) => callback(value)),
 });
