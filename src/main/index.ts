@@ -1,19 +1,31 @@
 import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, IpcMainEvent, shell, dialog } from "electron";
 import path from "path";
 import fs from "fs";
+import { autoUpdater } from "electron-updater";
 import { CommandRunner } from "./core/commandRunner";
 import { ProjectService, ProjectPayload, Framework } from "./core/projectService";
 import { HostService } from "./core/hostService";
 import { PortService } from "./core/portService";
 import { ServerService } from "./core/serverService";
+import { ProxyService } from "./core/proxyService";
+import { LogService } from "./core/logService";
 import { exec } from "child_process";
 
 let mainWindow: BrowserWindow | null = null;
 const runner = new CommandRunner();
+const logService = new LogService();
 const projectService = new ProjectService(runner);
 const hostService = new HostService();
 const portService = new PortService();
 let serverService: ServerService | null = null;
+let proxyService: ProxyService | null = null;
+
+process.on("uncaughtException", (err) => {
+    logService.error("uncaughtException", { message: err.message, stack: err.stack });
+});
+process.on("unhandledRejection", (reason, p) => {
+    logService.error("unhandledRejection", { reason: String(reason) });
+});
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -27,20 +39,61 @@ function createWindow() {
         },
     });
 
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+        logService.error("renderer process gone", details);
+    });
+
     serverService = new ServerService(runner, projectService, portService, hostService, {
         sendStatus: (projectId, status) => mainWindow?.webContents.send("server:status", { projectId, status }),
         sendLog: (projectId, data, type) => mainWindow?.webContents.send("server:log", { projectId, data, type }),
     });
 
+    proxyService = new ProxyService((status, error) => {
+        logService.logProxy(status, error);
+        mainWindow?.webContents.send("proxy:status", { status, error });
+    });
+
     mainWindow.loadFile(path.join(__dirname, "../../src/renderer/index.html"));
 }
 
-app.whenReady().then(() => {
-    createWindow();
+function setupAutoUpdate(): void {
+    if (!app.isPackaged) return;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on("update-available", (info: { version: string }) => {
+        logService.info("update available", { version: info.version });
+        mainWindow?.webContents.send("app:update-available", { version: info.version });
+    });
+    autoUpdater.on("update-downloaded", () => {
+        logService.info("update downloaded");
+        mainWindow?.webContents.send("app:update-downloaded", {});
+        dialog.showMessageBox(mainWindow!, {
+            type: "info",
+            title: "Update ready",
+            message: "A new version has been downloaded. Restart the app to install.",
+            buttons: ["Restart now", "Later"],
+            defaultId: 0,
+        }).then(({ response }) => {
+            if (response === 0) autoUpdater.quitAndInstall(false, true);
+        });
+    });
+    autoUpdater.on("error", (err: Error) => logService.error("updater error", { message: err.message }));
+    autoUpdater.checkForUpdates().catch((err: unknown) => logService.error("checkForUpdates", { message: err instanceof Error ? err.message : String(err) }));
+}
 
+app.whenReady().then(() => {
+    logService.info("app ready");
+    createWindow();
+    setupAutoUpdate();
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+});
+
+app.on("before-quit", () => {
+    logService.info("app quitting – stopping servers and proxy");
+    runner.cancelAll();
+    proxyService?.stopProxy();
 });
 
 app.on("window-all-closed", () => {
@@ -164,15 +217,35 @@ ipcMain.handle("project:document-root", async (_event, payload: { projectPath: s
     return path.join(projectPath, "dist");
 });
 
-// Sprint 5: Project list + Dev server control
+// Sprint 5: Project list + Dev server control (Sprint 6: enrich with domain for proxy)
 ipcMain.handle("project:list", async () => {
-    return projectService.getProjects();
+    const projects = projectService.getProjects();
+    return projects.map((p) => ({ ...p, domain: hostService.getDomainForProject(p.name) }));
+});
+ipcMain.handle("project:get", async (_event, fullPath: string) => {
+    const p = projectService.getProject(fullPath);
+    if (!p) return null;
+    return { ...p, domain: hostService.getDomainForProject(p.name) };
 });
 
 ipcMain.handle("server:start", async (_event, projectId: string) => {
-    return serverService?.startProject(projectId) ?? { success: false, error: "Server service not ready." };
+    const res = await (serverService?.startProject(projectId) ?? { success: false, error: "Server service not ready." });
+    if (res.success && proxyService?.getProxyStatus() === "Running") {
+        const projects = projectService.getProjects();
+        const project = projects.find((p) => p.fullPath === projectId);
+        const domain = project ? hostService.getDomainForProject(project.name) : null;
+        const port = portService.getStoredPort(projectId);
+        if (domain && port != null) {
+            proxyService.ensureRoute(domain, `http://127.0.0.1:${port}`);
+        }
+    }
+    return res;
 });
 ipcMain.handle("server:stop", async (_event, projectId: string) => {
+    const projects = projectService.getProjects();
+    const project = projects.find((p) => p.fullPath === projectId);
+    const domain = project ? hostService.getDomainForProject(project.name) : null;
+    if (domain && proxyService) proxyService.removeRoute(domain);
     return serverService?.stopProject(projectId) ?? { success: true };
 });
 ipcMain.handle("server:restart", async (_event, projectId: string) => {
@@ -193,16 +266,168 @@ ipcMain.handle("server:check-runtime-deps", async (_event, payload: { projectPat
 });
 
 ipcMain.handle("project:install", async (_event, projectPath: string) => {
+    const { getNodeInstallCommand, detectNodePackageManager } = await import("./core/packageManager");
+    const { detectFramework } = await import("./core/frameworkDetector");
+    const framework = detectFramework(projectPath);
+    let cmd = "npm";
+    let args: string[] = ["install"];
+    if (framework === "laravel") {
+        cmd = "composer";
+        args = ["install"];
+    } else {
+        const pm = detectNodePackageManager(projectPath);
+        const install = getNodeInstallCommand(pm);
+        cmd = install.cmd;
+        args = install.args;
+    }
     try {
         const result = await runner.run(
             `install_${Date.now()}`,
-            "npm",
-            ["install"],
+            cmd,
+            args,
             { cwd: projectPath },
-            {}
+            {
+                onStdout: (data) => mainWindow?.webContents.send("project:progress", { step: "Installing dependencies...", data, type: "stdout" }),
+                onStderr: (data) => mainWindow?.webContents.send("project:progress", { step: "Installing dependencies...", data, type: "stderr" }),
+            }
         );
-        return { success: result.code === 0, error: result.code !== 0 ? "npm install failed" : undefined };
+        return { success: result.code === 0, error: result.code !== 0 ? `${cmd} install failed` : undefined };
     } catch (error: any) {
         return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle("project:import", async () => {
+    const folder = await dialog.showOpenDialog(mainWindow!, { properties: ["openDirectory"] });
+    if (!folder.canceled && folder.filePaths[0]) {
+        return projectService.importProject(folder.filePaths[0]);
+    }
+    return { success: false, error: "No folder selected." };
+});
+ipcMain.handle("project:update", async (_event, payload: { projectId: string; updates: { runProfile?: { port?: number; startCommand?: string; env?: Record<string, string> }; packageManager?: string; lastOpenedAt?: string } }) => {
+    return projectService.updateProject(payload.projectId, payload.updates);
+});
+ipcMain.handle("project:detect-framework", async (_event, folderPath: string) => {
+    const { detectFramework } = await import("./core/frameworkDetector");
+    return detectFramework(folderPath);
+});
+ipcMain.handle("project:detect-package-manager", async (_event, folderPath: string) => {
+    const { detectNodePackageManager } = await import("./core/packageManager");
+    return detectNodePackageManager(folderPath);
+});
+ipcMain.handle("project:git-init", async (_event, projectPath: string) => {
+    try {
+        const result = await runner.run(
+            `git_init_${Date.now()}`,
+            "git",
+            ["init"],
+            { cwd: projectPath },
+            {
+                onStdout: (data) => mainWindow?.webContents.send("project:progress", { step: "Git init", data, type: "stdout" }),
+                onStderr: (data) => mainWindow?.webContents.send("project:progress", { step: "Git init", data, type: "stderr" }),
+            }
+        );
+        return { success: result.code === 0, error: result.code !== 0 ? "git init failed" : undefined };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+});
+ipcMain.handle("presets:list", async () => {
+    const { PRESETS } = await import("./core/presets");
+    return PRESETS;
+});
+ipcMain.handle("presets:for-framework", async (_event, framework: string) => {
+    const { getPresetsForFramework } = await import("./core/presets");
+    return getPresetsForFramework(framework as Framework);
+});
+
+// Sprint 6: Proxy (real domains without ports)
+ipcMain.handle("proxy:start", async () => {
+    const res = await (proxyService?.startProxy() ?? { success: false, error: "Proxy service not ready." });
+    if (res.success && proxyService && serverService) {
+        for (const p of projectService.getProjects()) {
+            if (serverService.getStatus(p.fullPath) === "Running") {
+                const domain = hostService.getDomainForProject(p.name);
+                const port = portService.getStoredPort(p.fullPath);
+                if (domain && port != null) proxyService.ensureRoute(domain, `http://127.0.0.1:${port}`);
+            }
+        }
+    }
+    return res;
+});
+ipcMain.handle("proxy:stop", async () => {
+    return proxyService?.stopProxy() ?? { success: true };
+});
+ipcMain.handle("proxy:status", async () => {
+    const status = proxyService?.getProxyStatus() ?? "Stopped";
+    const error = proxyService?.getStatusError() ?? null;
+    return { status, error };
+});
+ipcMain.handle("proxy:port", async () => proxyService?.getProxyPort() ?? 8080);
+ipcMain.handle("proxy:domain-url", async (_event, domain: string) => {
+    return domain ? proxyService?.getProxyUrl(domain) ?? null : null;
+});
+ipcMain.handle("proxy:repair", async () => {
+    if (!proxyService || !serverService) return { success: false, error: "Services not ready." };
+    if (proxyService.getProxyStatus() !== "Running") return { success: true, message: "Proxy not running; start it first." };
+    const routes = proxyService.getRoutes();
+    for (const domain of Object.keys(routes)) {
+        proxyService.removeRoute(domain);
+    }
+    for (const p of projectService.getProjects()) {
+        if (serverService.getStatus(p.fullPath) === "Running") {
+            const domain = hostService.getDomainForProject(p.name);
+            const port = portService.getStoredPort(p.fullPath);
+            if (domain && port != null) proxyService.ensureRoute(domain, `http://127.0.0.1:${port}`);
+        }
+    }
+    return { success: true };
+});
+
+// Sprint 7: Project delete, logs, app paths
+ipcMain.handle("project:delete", async (_event, projectId: string) => {
+    const projects = projectService.getProjects();
+    const project = projects.find((p) => p.fullPath === projectId);
+    if (!project) return { success: false, error: "Project not found." };
+    const domain = hostService.getDomainForProject(project.name);
+    if (serverService?.getStatus(projectId) === "Running" || serverService?.getStatus(projectId) === "Starting") {
+        await serverService.stopProject(projectId);
+    }
+    if (domain && proxyService) proxyService.removeRoute(domain);
+    if (domain) await hostService.removeDomain(domain);
+    const ok = projectService.deleteProject(projectId);
+    if (ok) logService.info("project deleted", { projectId, domain });
+    return { success: ok };
+});
+
+ipcMain.handle("logs:export", async () => {
+    return logService.getExportContent();
+});
+ipcMain.handle("logs:dir", async () => {
+    return logService.getLogsDir();
+});
+ipcMain.handle("logs:export-to-file", async () => {
+    const content = logService.getExportContent();
+    const { filePath } = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: `devfactory-logs-${new Date().toISOString().slice(0, 10)}.txt`,
+        filters: [{ name: "Text", extensions: ["txt"] }],
+    });
+    if (filePath) {
+        fs.writeFileSync(filePath, content);
+        return { success: true, path: filePath };
+    }
+    return { success: false };
+});
+ipcMain.handle("app:user-data-path", async () => {
+    return app.getPath("userData");
+});
+
+ipcMain.handle("app:check-for-updates", async () => {
+    if (!app.isPackaged) return { success: false, error: "Updates only in packaged app" };
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        return { success: true, update: result?.updateInfo ? { version: result.updateInfo.version } : null };
+    } catch (e: any) {
+        return { success: false, error: e?.message || "Check failed" };
     }
 });
