@@ -103,7 +103,40 @@ npm run dist:linux  # Linux: AppImage + .deb
 
 Output goes to the `release/` folder. The app runs without dev tooling once installed.
 
-**Linux from Windows:** Building Linux on Windows (`npm run dist:linux`) can fail when downloading the Electron Linux zip (network/connection closed). Use the **GitHub Actions** workflow instead: push to `master`/`main` or run the “Build Linux” workflow manually; the Linux artifacts (AppImage, .deb, `latest-linux.yml`) will be in the run’s **Artifacts** (download `release-linux`).
+### Step-by-step: Send the app to Linux users
+
+1. **Set your GitHub repo** in `package.json` (if not already):
+   ```json
+   "repository": { "type": "git", "url": "https://github.com/Itsyabitaa/Dev-Factory.git" }
+   ```
+   (Already set for this repo.)
+
+2. **Push your code** (including `.github/workflows/release.yml`) to GitHub:
+   ```bash
+   git add .
+   git commit -m "Add release workflow"
+   git push origin master
+   ```
+
+3. **Bump the version** in `package.json` (e.g. `"version": "1.0.0"` → `"1.0.1"`), commit and push.
+
+4. **Create a new release on GitHub:**
+   - Open your repo on GitHub → **Releases** → **Draft a new release**.
+   - **Choose a tag:** type a new tag (e.g. `v1.0.1`) and create it.
+   - Add release title/notes if you want.
+   - Click **Publish release** (not “Save draft”).
+
+5. **Wait for the workflow** (about 2–5 minutes):
+   - Go to **Actions** → open the run **“Release (build Linux and attach to release)”**.
+   - It will build the Linux app and attach **DevFactory-1.0.1.AppImage** and **devfactory_1.0.1_amd64.deb** (and `latest-linux.yml`) to that release.
+
+6. **Tell Linux users where to download:**
+   - Send them: **https://github.com/Itsyabitaa/Dev-Factory/releases**
+   - They open the latest release (e.g. v1.0.1) and download:
+     - **DevFactory-1.0.1.AppImage** (run directly on most distros), or  
+     - **devfactory_1.0.1_amd64.deb** (install on Debian/Ubuntu with `sudo dpkg -i devfactory_1.0.1_amd64.deb`).
+
+**Where is the app for Linux users?** Building Linux on Windows (`npm run dist:linux`) can fail when downloading the Electron Linux zip (network/connection closed). Use the **GitHub Actions** workflow instead: push to `master`/`main` or run the “Build Linux” workflow manually; the Linux artifacts (AppImage, .deb, `latest-linux.yml`) will be in the run’s **Artifacts** (download `release-linux`). To put the Linux app where users can get it: create a GitHub Release (tag e.g. v1.0.0) and publish it; the "Release (build Linux and attach to release)" workflow will build and attach the AppImage and .deb so Linux users can download from the Releases page.
 
 ## 📂 App data (persistent, no writes to install dir)
 
@@ -132,9 +165,9 @@ Reinstalling the app does not delete these; uninstall does not remove them unles
 
 1. **Set your repo** in `package.json`:
    ```json
-   "repository": { "type": "git", "url": "https://github.com/YOUR_USERNAME/YOUR_REPO.git" }
+   "repository": { "type": "git", "url": "https://github.com/Itsyabitaa/Dev-Factory.git" }
    ```
-   Replace `YOUR_USERNAME` and `YOUR_REPO` with your GitHub user and repo name.
+   (Already set for this repo.)
 
 2. **Create a GitHub release** for each version (e.g. tag `v1.0.0`).
 

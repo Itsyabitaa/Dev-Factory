@@ -1,0 +1,39 @@
+# When you publish a Release (e.g. v1.0.0), build Linux and attach the app so Linux users can download it.
+# Linux users: go to GitHub → Your repo → Releases → download the .AppImage or .deb
+name: Release (build Linux and attach to release)
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-upload-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux
+        run: npm run dist:linux
+
+      - name: Upload Linux assets to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_URL: ${{ github.event.release.upload_url }}
+        run: |
+          cd release
+          base_url="${UPLOAD_URL%%\{*}"
+          for f in *.AppImage *.deb latest-linux.yml; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f"
+              curl -sS -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary @"$f" "${base_url}?name=$(basename "$f")"
+            fi
+          done
