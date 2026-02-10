@@ -103,6 +103,8 @@ npm run dist:linux  # Linux: AppImage + .deb
 
 Output goes to the `release/` folder. The app runs without dev tooling once installed.
 
+**Linux from Windows:** Building Linux on Windows (`npm run dist:linux`) can fail when downloading the Electron Linux zip (network/connection closed). Use the **GitHub Actions** workflow instead: push to `master`/`main` or run the “Build Linux” workflow manually; the Linux artifacts (AppImage, .deb, `latest-linux.yml`) will be in the run’s **Artifacts** (download `release-linux`).
+
 ## 📂 App data (persistent, no writes to install dir)
 
 All persistent data lives in the OS app-data directory:
