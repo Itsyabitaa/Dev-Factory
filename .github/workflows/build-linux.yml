@@ -1,0 +1,32 @@
+# Build Linux (and optionally Windows) so you get Linux artifacts without running dist:linux on Windows.
+# Artifacts: release/DevFactory-*.AppImage, release/*.deb, release/latest-linux.yml
+name: Build Linux
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (Linux)
+        run: npm run dist:linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: release/
