@@ -1,5 +1,66 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn, ChildProcess, execSync } from "child_process";
 import os from "os";
+import path from "path";
+import fs from "fs";
+
+let resolvedPath: string | null = null;
+
+/** On Linux/macOS, GUI-launched apps often don't get the same PATH as the terminal (e.g. nvm/fnm). Resolve a PATH that finds node/npm. */
+function getResolvedPath(): string {
+    if (resolvedPath) return resolvedPath;
+    if (os.platform() === "win32") {
+        resolvedPath = process.env.PATH || "";
+        return resolvedPath;
+    }
+    try {
+        const home = process.env.HOME || os.homedir();
+        const pathFromShell = execSync("bash -lc 'echo $PATH'", {
+            encoding: "utf8",
+            timeout: 3000,
+            env: { ...process.env, HOME: home },
+        }).trim();
+        if (pathFromShell) {
+            resolvedPath = pathFromShell;
+            return resolvedPath;
+        }
+    } catch (_) {
+        // ignore
+    }
+    const home = process.env.HOME || os.homedir();
+    const extra: string[] = [];
+    try {
+        const nvmVersions = path.join(home, ".nvm", "versions", "node");
+        if (fs.existsSync(nvmVersions)) {
+            for (const dir of fs.readdirSync(nvmVersions)) {
+                const bin = path.join(nvmVersions, dir, "bin");
+                if (fs.existsSync(bin)) extra.push(bin);
+            }
+        }
+        const nvmCurrent = path.join(home, ".nvm", "current", "bin");
+        if (fs.existsSync(nvmCurrent)) extra.push(nvmCurrent);
+    } catch (_) {
+        /* ignore */
+    }
+    try {
+        const fnmDir = path.join(home, ".local", "share", "fnm");
+        if (fs.existsSync(fnmDir)) {
+            for (const dir of fs.readdirSync(fnmDir)) {
+                const bin = path.join(fnmDir, dir, "installation", "bin");
+                if (fs.existsSync(bin)) extra.push(bin);
+            }
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    extra.push("/usr/local/bin", "/usr/bin");
+    resolvedPath = [...extra, process.env.PATH || ""].join(path.delimiter);
+    return resolvedPath;
+}
+
+function getRunEnv(options: RunOptions): NodeJS.ProcessEnv {
+    const base = os.platform() === "win32" ? process.env : { ...process.env, PATH: getResolvedPath() };
+    return { ...base, ...options.env };
+}
 
 export type RunOptions = {
     cwd?: string;
@@ -53,7 +114,7 @@ export class CommandRunner {
         const useShell = this.shouldUseShell(resolvedCommand);
         const child = spawn(resolvedCommand, args, {
             cwd: options.cwd,
-            env: { ...process.env, ...options.env },
+            env: getRunEnv(options),
             shell: useShell,
             windowsHide: true,
         });
@@ -100,7 +161,7 @@ export class CommandRunner {
         const args = os.platform() === "win32" ? ["/c", command] : ["-c", command];
         const child = spawn(shell, args, {
             cwd: options.cwd,
-            env: { ...process.env, ...options.env },
+            env: getRunEnv(options),
             shell: false,
             windowsHide: true,
         });
